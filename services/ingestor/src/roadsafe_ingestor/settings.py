@@ -16,7 +16,7 @@ CONFIG_DIR = REPO_ROOT / "config"
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="", extra="ignore")
+    model_config = SettingsConfigDict(env_prefix="", extra="ignore", env_file=".env")
 
     ingest_database_url: SecretStr = Field(default=SecretStr(""))
     log_level: str = Field(default="INFO")
