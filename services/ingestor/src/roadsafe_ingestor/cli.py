@@ -287,6 +287,12 @@ def run(
                 raise typer.Exit(code=1)
 
         except Exception as exc:  # noqa: BLE001
+            # A failure mid-batch leaves the connection's transaction
+            # aborted; CockroachDB refuses every further statement,
+            # including this one, until it's rolled back, which would
+            # otherwise mask the real error behind an unrelated
+            # InFailedSqlTransaction from this exact call.
+            conn.rollback()
             complete_run(
                 conn,
                 run_handle,

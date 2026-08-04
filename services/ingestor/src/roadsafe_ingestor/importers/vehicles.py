@@ -7,6 +7,8 @@ silently dropped or allowed to abort the whole batch.
 
 from __future__ import annotations
 
+import uuid
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -19,7 +21,12 @@ from roadsafe_ingestor.models import VehicleRow
 
 logger = get_logger(__name__)
 
+# `id` has no database-level default (Prisma's `@default(uuid())` generates
+# the value client-side, not via a column DEFAULT), so raw-SQL inserts must
+# supply one themselves. Not part of CONFLICT_COLUMNS/UPDATE_COLUMNS: an
+# existing row keeps its own id across a re-import.
 COLUMNS = (
+    "id",
     "collision_index",
     "vehicle_reference",
     "vehicle_type_code",
@@ -44,13 +51,15 @@ COLUMNS = (
     "age_of_vehicle",
     "generic_make_model",
     "driver_imd_decile",
+    "updated_at",
 )
 CONFLICT_COLUMNS = ("collision_index", "vehicle_reference")
-UPDATE_COLUMNS = tuple(c for c in COLUMNS if c not in CONFLICT_COLUMNS)
+UPDATE_COLUMNS = tuple(c for c in COLUMNS if c not in CONFLICT_COLUMNS and c != "id")
 
 
 def _row_to_tuple(row: VehicleRow) -> tuple[Any, ...]:
     return (
+        str(uuid.uuid4()),
         row.collision_index,
         row.vehicle_reference,
         row.vehicle_type_code,
@@ -75,6 +84,7 @@ def _row_to_tuple(row: VehicleRow) -> tuple[Any, ...]:
         row.age_of_vehicle,
         row.generic_make_model,
         row.driver_imd_decile,
+        datetime.now(UTC),
     )
 
 

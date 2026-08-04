@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 from typing import Any
 
 from psycopg import Connection
@@ -13,7 +14,12 @@ from roadsafe_ingestor.settings import Settings
 
 logger = get_logger(__name__)
 
+# `id` has no database-level default (Prisma's `@default(uuid())` generates
+# the value client-side, not via a column DEFAULT), so raw-SQL inserts must
+# supply one themselves. Not part of CONFLICT_COLUMNS/UPDATE_COLUMNS: an
+# existing row keeps its own id across a re-import.
 COLUMNS = (
+    "id",
     "dataset_name",
     "field_name",
     "code",
@@ -39,6 +45,7 @@ def import_code_lists(conn: Connection, settings: Settings) -> int:
             for entry in codes:
                 rows.append(
                     (
+                        str(uuid.uuid4()),
                         dataset_name,
                         field_name,
                         entry["code"],

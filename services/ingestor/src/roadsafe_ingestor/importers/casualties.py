@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import uuid
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -14,7 +16,12 @@ from roadsafe_ingestor.models import CasualtyRow
 
 logger = get_logger(__name__)
 
+# `id` has no database-level default (Prisma's `@default(uuid())` generates
+# the value client-side, not via a column DEFAULT), so raw-SQL inserts must
+# supply one themselves. Not part of CONFLICT_COLUMNS/UPDATE_COLUMNS: an
+# existing row keeps its own id across a re-import.
 COLUMNS = (
+    "id",
     "collision_index",
     "vehicle_reference",
     "casualty_reference",
@@ -31,13 +38,15 @@ COLUMNS = (
     "casualty_type_code",
     "casualty_home_area_type_code",
     "casualty_imd_decile",
+    "updated_at",
 )
 CONFLICT_COLUMNS = ("collision_index", "vehicle_reference", "casualty_reference")
-UPDATE_COLUMNS = tuple(c for c in COLUMNS if c not in CONFLICT_COLUMNS)
+UPDATE_COLUMNS = tuple(c for c in COLUMNS if c not in CONFLICT_COLUMNS and c != "id")
 
 
 def _row_to_tuple(row: CasualtyRow) -> tuple[Any, ...]:
     return (
+        str(uuid.uuid4()),
         row.collision_index,
         row.vehicle_reference,
         row.casualty_reference,
@@ -54,6 +63,7 @@ def _row_to_tuple(row: CasualtyRow) -> tuple[Any, ...]:
         row.casualty_type_code,
         row.casualty_home_area_type_code,
         row.casualty_imd_decile,
+        datetime.now(UTC),
     )
 
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,9 @@ from roadsafe_ingestor.models import CollisionRow
 
 logger = get_logger(__name__)
 
+# `updated_at` has no database-level default (Prisma's `@updatedAt` is set
+# client-side on every write, not via a column DEFAULT), so raw-SQL inserts
+# must supply it themselves, on both insert and re-import update.
 COLUMNS = (
     "collision_index",
     "accident_year",
@@ -56,6 +60,7 @@ COLUMNS = (
     "h3_resolution_9",
     "source_status",
     "source_revision",
+    "updated_at",
 )
 CONFLICT_COLUMNS = ("collision_index",)
 UPDATE_COLUMNS = tuple(c for c in COLUMNS if c not in CONFLICT_COLUMNS)
@@ -110,6 +115,7 @@ def _row_to_tuple(
         h3.get(9),
         source_status,
         source_revision,
+        datetime.now(UTC),
     )
 
 

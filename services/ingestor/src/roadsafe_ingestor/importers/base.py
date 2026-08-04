@@ -67,5 +67,9 @@ def stream_parsed_batches(
             yield batch, result
             batch = []
 
-    if batch:
+    # Yield the final state even when every row in the trailing partial
+    # batch was rejected (batch empty but result.rows_seen > 0), otherwise
+    # the caller's `final_result` never updates past its zeroed default and
+    # the whole file's rows_seen/rejections silently vanish.
+    if batch or result.rows_seen:
         yield batch, result

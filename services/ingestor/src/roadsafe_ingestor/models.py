@@ -66,9 +66,9 @@ class CollisionRow(BaseModel):
 
     @classmethod
     def from_raw_row(cls, row: dict[str, str]) -> CollisionRow:
-        collision_index = (row.get("accident_index") or "").strip()
+        collision_index = (row.get("collision_index") or "").strip()
         if not collision_index:
-            raise RowRejectedError(reference="<missing>", reason="empty accident_index")
+            raise RowRejectedError(reference="<missing>", reason="empty collision_index")
 
         date_value = parsing.parse_date(row.get("date"))
         if date_value is None:
@@ -76,7 +76,7 @@ class CollisionRow(BaseModel):
 
         try:
             severity_code = parsing.parse_required_int(
-                row.get("accident_severity"), field_name="accident_severity"
+                row.get("collision_severity"), field_name="collision_severity"
             )
             police_force_code = parsing.parse_required_int(
                 row.get("police_force"), field_name="police_force"
@@ -111,9 +111,9 @@ class CollisionRow(BaseModel):
         return cls(
             collision_index=collision_index,
             accident_year=parsing.parse_required_int(
-                row.get("accident_year"), field_name="accident_year"
+                row.get("collision_year"), field_name="collision_year"
             ),
-            accident_reference=(row.get("accident_reference") or collision_index).strip(),
+            accident_reference=(row.get("collision_ref_no") or collision_index).strip(),
             location_easting_osgr=easting,
             location_northing_osgr=northing,
             coordinates=coordinates,
@@ -134,11 +134,14 @@ class CollisionRow(BaseModel):
             junction_control_code=parsing.parse_nullable_int(row.get("junction_control")),
             second_road_class_code=parsing.parse_nullable_int(row.get("second_road_class")),
             second_road_number=(row.get("second_road_number") or "").strip() or None,
+            # DfT merged these two into a single "pedestrian_crossing" field
+            # at some point; the "_historic" columns are what still carries
+            # the original split values this schema expects.
             pedestrian_crossing_human_control_code=parsing.parse_nullable_int(
-                row.get("pedestrian_crossing_human_control")
+                row.get("pedestrian_crossing_human_control_historic")
             ),
             pedestrian_crossing_physical_facilities_code=parsing.parse_nullable_int(
-                row.get("pedestrian_crossing_physical_facilities")
+                row.get("pedestrian_crossing_physical_facilities_historic")
             ),
             light_conditions_code=parsing.parse_nullable_int(row.get("light_conditions")),
             weather_conditions_code=parsing.parse_nullable_int(row.get("weather_conditions")),
@@ -188,9 +191,9 @@ class VehicleRow(BaseModel):
 
     @classmethod
     def from_raw_row(cls, row: dict[str, str]) -> VehicleRow:
-        collision_index = (row.get("accident_index") or "").strip()
+        collision_index = (row.get("collision_index") or "").strip()
         if not collision_index:
-            raise RowRejectedError(reference="<missing>", reason="empty accident_index")
+            raise RowRejectedError(reference="<missing>", reason="empty collision_index")
         vehicle_reference = parsing.parse_nullable_int(row.get("vehicle_reference"))
         if vehicle_reference is None:
             raise RowRejectedError(collision_index, "missing vehicle_reference")
@@ -259,9 +262,9 @@ class CasualtyRow(BaseModel):
 
     @classmethod
     def from_raw_row(cls, row: dict[str, str]) -> CasualtyRow:
-        collision_index = (row.get("accident_index") or "").strip()
+        collision_index = (row.get("collision_index") or "").strip()
         if not collision_index:
-            raise RowRejectedError(reference="<missing>", reason="empty accident_index")
+            raise RowRejectedError(reference="<missing>", reason="empty collision_index")
         casualty_reference = parsing.parse_nullable_int(row.get("casualty_reference"))
         if casualty_reference is None:
             raise RowRejectedError(collision_index, "missing casualty_reference")
