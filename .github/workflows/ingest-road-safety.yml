@@ -16,13 +16,6 @@ on:
           - FINAL
           - PROVISIONAL
 
-concurrency:
-  # One ingestion at a time against the live database, queued in
-  # dispatch order rather than cancelled, so several years triggered in
-  # quick succession run strictly one after another unattended.
-  group: ingest-road-safety
-  cancel-in-progress: false
-
 jobs:
   ingest:
     name: Run ingestion pipeline
