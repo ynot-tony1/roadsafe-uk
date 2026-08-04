@@ -57,6 +57,35 @@ jobs:
       - name: Import code lists
         run: uv run ingestor import-code-lists
 
+      # download only ever produces the DfT's rolling "last 5 years" bulk
+      # files (see docs/troubleshooting.md), never a single year on its
+      # own, so every dataset kind is filtered down to the requested year
+      # here before import, the same way a manual calibration run does.
+      - name: Filter downloaded files to the requested year
+        env:
+          YEAR: ${{ inputs.year }}
+        run: |
+          python3 -c "
+          import csv, os
+
+          year = os.environ['YEAR']
+          for name in ('collisions', 'vehicles', 'casualties'):
+              src = f'data/raw/{name}.csv'
+              dst = f'data/raw/{name}_filtered.csv'
+              with open(src, newline='') as fin, open(dst, 'w', newline='') as fout:
+                  reader = csv.reader(fin)
+                  writer = csv.writer(fout)
+                  header = next(reader)
+                  writer.writerow(header)
+                  idx = header.index('collision_year')
+                  n = 0
+                  for row in reader:
+                      if row[idx] == year:
+                          writer.writerow(row)
+                          n += 1
+                  print(f'{name}: wrote {n} rows for {year}')
+          "
+
       - name: Run full pipeline for the year
         env:
           YEAR: ${{ inputs.year }}
@@ -64,9 +93,9 @@ jobs:
         run: |
           uv run ingestor run "$YEAR" \
             --source-status "$SOURCE_STATUS" \
-            --collisions-csv data/raw/collisions.csv \
-            --vehicles-csv data/raw/vehicles.csv \
-            --casualties-csv data/raw/casualties.csv \
+            --collisions-csv data/raw/collisions_filtered.csv \
+            --vehicles-csv data/raw/vehicles_filtered.csv \
+            --casualties-csv data/raw/casualties_filtered.csv \
             --source-revision "${{ github.run_id }}" \
             --workflow-run-id "${{ github.run_id }}"
 
