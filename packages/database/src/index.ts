@@ -1,4 +1,4 @@
-import { PrismaClient } from '../generated/client/index.js';
+import { PrismaClient } from '@prisma/client';
 
 declare global {
   // eslint-disable-next-line no-var
@@ -15,4 +15,4 @@ if (process.env.NODE_ENV !== 'production') {
   globalThis.__roadsafePrisma = prisma;
 }
 
-export * from '../generated/client/index.js';
+export * from '@prisma/client';

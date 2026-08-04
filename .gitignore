@@ -17,7 +17,6 @@ apps/web/build/
 **/coverage/
 *.tsbuildinfo
 .turbo/
-packages/database/generated/
 
 # python
 __pycache__/
