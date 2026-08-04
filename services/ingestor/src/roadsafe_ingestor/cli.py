@@ -25,7 +25,15 @@ from roadsafe_ingestor.ingestion_run import complete_run, start_run
 from roadsafe_ingestor.logging_config import configure_logging, get_logger, log_extra
 from roadsafe_ingestor.settings import get_settings
 
-app = typer.Typer(help="RoadSafe UK ingestion pipeline")
+# pretty_exceptions_show_locals defaults to True, which prints every local
+# variable on an uncaught exception, including live psycopg.Connection
+# objects that hold the plaintext password. A real connection failure did
+# exactly this into a public GitHub Actions log; disabled everywhere, not
+# just in CI, since a local terminal can be shared or screen-recorded too.
+app = typer.Typer(
+    help="RoadSafe UK ingestion pipeline",
+    pretty_exceptions_show_locals=False,
+)
 logger = get_logger(__name__)
 
 
