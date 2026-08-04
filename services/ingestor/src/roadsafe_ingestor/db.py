@@ -1,0 +1,129 @@
+"""Database access helpers.
+
+All writes go through batched `executemany`-style calls, never one
+statement per row, and retry on CockroachDB serialization conflicts
+(SQLSTATE 40001) with exponential backoff via tenacity.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Iterable, Iterator, Sequence
+from contextlib import contextmanager
+from typing import Any
+
+import psycopg
+from psycopg import Connection
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
+
+from roadsafe_ingestor.logging_config import get_logger
+
+logger = get_logger(__name__)
+
+BATCH_SIZE = 500
+
+
+def _is_serialization_conflict(exc: BaseException) -> bool:
+    return isinstance(exc, psycopg.errors.SerializationFailure)
+
+
+@contextmanager
+def connect(database_url: str) -> Iterator[Connection]:
+    with psycopg.connect(database_url, autocommit=False) as conn:
+        yield conn
+
+
+@retry(
+    retry=retry_if_exception(_is_serialization_conflict),
+    stop=stop_after_attempt(5),
+    wait=wait_exponential(multiplier=0.5, max=8),
+    reraise=True,
+)
+def execute_batch_upsert(
+    conn: Connection,
+    *,
+    table: str,
+    columns: Sequence[str],
+    conflict_columns: Sequence[str],
+    update_columns: Sequence[str],
+    rows: Sequence[tuple[Any, ...]],
+) -> int:
+    """Upsert `rows` into `table` in batches, retrying on serialization
+    conflicts. Returns the number of rows affected. `columns`, the tuple
+    order in `rows`, and `conflict_columns`/`update_columns` must agree."""
+    if not rows:
+        return 0
+
+    column_list = ", ".join(columns)
+    placeholders = ", ".join(["%s"] * len(columns))
+    conflict_list = ", ".join(conflict_columns)
+    set_clause = ", ".join(f"{col} = EXCLUDED.{col}" for col in update_columns)
+
+    sql = (
+        f"INSERT INTO {table} ({column_list}) VALUES ({placeholders}) "
+        f"ON CONFLICT ({conflict_list}) DO UPDATE SET {set_clause}"
+    )
+
+    affected = 0
+    with conn.cursor() as cur:
+        for batch in _chunk(rows, BATCH_SIZE):
+            cur.executemany(sql, batch)
+            affected += (
+                cur.rowcount if cur.rowcount is not None and cur.rowcount > 0 else len(batch)
+            )
+    conn.commit()
+    return affected
+
+
+def _chunk(items: Sequence[Any], size: int) -> Iterable[Sequence[Any]]:
+    for i in range(0, len(items), size):
+        yield items[i : i + size]
+
+
+def execute_batch_upsert_with_fk_fallback(
+    conn: Connection,
+    *,
+    table: str,
+    columns: Sequence[str],
+    conflict_columns: Sequence[str],
+    update_columns: Sequence[str],
+    rows: Sequence[tuple[Any, ...]],
+    row_reference: Sequence[Any],
+) -> tuple[int, list[tuple[Any, str]]]:
+    """Like execute_batch_upsert, but when a batch fails a foreign key
+    check (for example a vehicle referencing a collision that was rejected
+    upstream), retries the batch one row at a time so the valid rows still
+    land and only the offending rows are reported as rejected. Returns
+    (rows_inserted, [(reference, reason), ...])."""
+    try:
+        inserted = execute_batch_upsert(
+            conn,
+            table=table,
+            columns=columns,
+            conflict_columns=conflict_columns,
+            update_columns=update_columns,
+            rows=rows,
+        )
+        return inserted, []
+    except psycopg.errors.ForeignKeyViolation:
+        conn.rollback()
+
+    rejected: list[tuple[Any, str]] = []
+    inserted = 0
+    column_list = ", ".join(columns)
+    placeholders = ", ".join(["%s"] * len(columns))
+    conflict_list = ", ".join(conflict_columns)
+    set_clause = ", ".join(f"{col} = EXCLUDED.{col}" for col in update_columns)
+    sql = (
+        f"INSERT INTO {table} ({column_list}) VALUES ({placeholders}) "
+        f"ON CONFLICT ({conflict_list}) DO UPDATE SET {set_clause}"
+    )
+    with conn.cursor() as cur:
+        for row, reference in zip(rows, row_reference, strict=True):
+            try:
+                cur.execute(sql, row)
+                inserted += 1
+                conn.commit()
+            except psycopg.errors.ForeignKeyViolation:
+                conn.rollback()
+                rejected.append((reference, "references a collision that was not imported"))
+    return inserted, rejected

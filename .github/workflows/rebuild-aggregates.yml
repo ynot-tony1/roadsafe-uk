@@ -1,0 +1,46 @@
+name: Rebuild aggregates
+
+on:
+  workflow_dispatch:
+    inputs:
+      year:
+        description: "Year to rebuild h3_metrics and annual_metrics for"
+        required: true
+        type: number
+
+jobs:
+  rebuild:
+    name: Rebuild h3_metrics and annual_metrics
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/ingestor
+    env:
+      INGEST_DATABASE_URL: ${{ secrets.INGEST_DATABASE_URL }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.4.29"
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Rebuild H3 aggregates
+        env:
+          YEAR: ${{ inputs.year }}
+        run: uv run ingestor build-h3 "$YEAR" --source-import-id "rebuild-${{ github.run_id }}"
+
+      - name: Refresh annual metrics
+        env:
+          YEAR: ${{ inputs.year }}
+        run: uv run ingestor refresh-metrics "$YEAR" --source-import-id "rebuild-${{ github.run_id }}"
+
+      - name: Verify
+        env:
+          YEAR: ${{ inputs.year }}
+        run: uv run ingestor verify "$YEAR"

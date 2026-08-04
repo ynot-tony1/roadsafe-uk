@@ -1,0 +1,75 @@
+name: Ingest road safety data
+
+on:
+  workflow_dispatch:
+    inputs:
+      year:
+        description: "STATS19 year to ingest"
+        required: true
+        type: number
+      source_status:
+        description: "Status of the source data being imported"
+        required: false
+        default: "FINAL"
+        type: choice
+        options:
+          - FINAL
+          - PROVISIONAL
+
+jobs:
+  ingest:
+    name: Run ingestion pipeline
+    runs-on: ubuntu-latest
+    # A hard stop. New data is always a deliberate human decision (see
+    # check-road-safety-data.yml), this variable is the switch that turns
+    # that decision into an actual import.
+    if: vars.INGESTION_ENABLED == 'true'
+    defaults:
+      run:
+        working-directory: services/ingestor
+    env:
+      INGEST_DATABASE_URL: ${{ secrets.INGEST_DATABASE_URL }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.4.29"
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Refuse provisional data unless explicitly enabled
+        if: inputs.source_status == 'PROVISIONAL' && vars.PROVISIONAL_DATA_ENABLED != 'true'
+        run: |
+          echo "PROVISIONAL_DATA_ENABLED is not set to true, refusing to import provisional data." >&2
+          exit 1
+
+      - name: Discover current publications
+        run: uv run ingestor discover
+
+      - name: Download source files
+        run: uv run ingestor download --data-dir data/raw
+
+      - name: Import code lists
+        run: uv run ingestor import-code-lists
+
+      - name: Run full pipeline for the year
+        env:
+          YEAR: ${{ inputs.year }}
+          SOURCE_STATUS: ${{ inputs.source_status }}
+        run: |
+          uv run ingestor run "$YEAR" \
+            --source-status "$SOURCE_STATUS" \
+            --collisions-csv data/raw/collisions.csv \
+            --vehicles-csv data/raw/vehicles.csv \
+            --casualties-csv data/raw/casualties.csv \
+            --source-revision "${{ github.run_id }}" \
+            --workflow-run-id "${{ github.run_id }}"
+
+      - name: Clean up downloaded files
+        if: always()
+        run: uv run ingestor cleanup --data-dir data/raw

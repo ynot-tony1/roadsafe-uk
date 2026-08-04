@@ -1,0 +1,24 @@
+{
+  "name": "@roadsafe-uk/database",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "generate": "prisma generate",
+    "migrate:dev": "prisma migrate dev",
+    "migrate:deploy": "prisma migrate deploy",
+    "db:push": "prisma db push",
+    "studio": "prisma studio",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@prisma/client": "6.16.3"
+  },
+  "devDependencies": {
+    "@types/node": "20.19.43",
+    "prisma": "6.16.3",
+    "typescript": "5.9.3"
+  }
+}

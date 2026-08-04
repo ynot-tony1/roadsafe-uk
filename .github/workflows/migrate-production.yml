@@ -1,0 +1,36 @@
+name: Migrate production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/database/prisma/migrations/**"
+  workflow_dispatch:
+
+jobs:
+  migrate:
+    name: Apply pending migrations
+    runs-on: ubuntu-latest
+    # The only workflow with schema-write access. MIGRATION_DATABASE_URL
+    # is the roadsafe_migrator role's credential, never used anywhere else
+    # in CI.
+    env:
+      DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Deploy pending migrations
+        run: pnpm db:migrate:deploy

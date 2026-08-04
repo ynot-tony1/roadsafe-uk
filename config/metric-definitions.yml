@@ -1,0 +1,73 @@
+# Transparent metric definitions used across the dashboard, local-authority
+# explorer, road-user explorer and hotspot explorer (spec section 3 and 13).
+#
+# This file is the single source of truth for what each displayed number
+# means. The web app renders these definitions verbatim in MethodologyNotice
+# components so a metric's meaning is never left implicit in code.
+
+counts:
+  collision_count:
+    label: "Collision count"
+    description: "Number of police-reported personal-injury road collisions recorded in STATS19 for the selected filters."
+  casualty_count:
+    label: "Casualty count"
+    description: "Number of casualties (of any severity) recorded across the selected collisions."
+  fatal_casualty_count:
+    label: "Fatal casualties"
+    description: "Casualties recorded with severity code 1 (fatal)."
+  serious_casualty_count:
+    label: "Serious casualties"
+    description: "Casualties recorded with severity code 2 (serious)."
+  ksi_casualty_count:
+    label: "Killed or seriously injured (KSI)"
+    description: "Casualties recorded as fatal or serious. This is a standard UK road-safety grouping, not a severity code of its own."
+  slight_casualty_count:
+    label: "Slight casualties"
+    description: "Casualties recorded with severity code 3 (slight)."
+  pedestrian_casualty_count:
+    label: "Pedestrian casualties"
+    description: "Casualties whose casualty_type indicates a pedestrian."
+  cyclist_casualty_count:
+    label: "Cyclist casualties"
+    description: "Casualties whose casualty_type indicates a pedal cyclist."
+  motorcyclist_casualty_count:
+    label: "Motorcyclist casualties"
+    description: "Casualties whose casualty_type indicates a motorcycle rider or passenger, any engine size."
+
+rates:
+  collisions_per_population:
+    label: "Collisions per 100,000 population"
+    denominator: "population"
+    denominator_notes: "Requires LocalAuthority.populationDenominator and its recorded denominatorYear. Never mixed across denominator years without a label."
+  casualties_per_population:
+    label: "Casualties per 100,000 population"
+    denominator: "population"
+  collisions_per_vehicle_mile:
+    label: "Collisions per 100 million vehicle miles"
+    denominator: "vehicle_miles"
+    denominator_notes: "Requires LocalAuthority.trafficDenominatorVehicleMiles. Optional; only shown where the denominator is available."
+  ksi_per_vehicle_mile:
+    label: "KSI casualties per 100 million vehicle miles"
+    denominator: "vehicle_miles"
+  collisions_per_road_km:
+    label: "Collisions per road kilometre"
+    denominator: "road_length_km"
+
+rate_display_rules:
+  - "Every rate must display its denominator value and denominator year alongside the rate."
+  - "Rates and counts are always shown as separate, independently sortable columns. A rate is never substituted for a count."
+  - "No composite or weighted danger score is ever calculated or displayed."
+
+percentage_change_rules:
+  minimum_baseline_count: 10
+  warning_below_baseline_count: 30
+  description: "Percentage change is only shown when the baseline period count meets minimum_baseline_count. Values below warning_below_baseline_count are shown with an explicit small-sample warning."
+
+young_driver_definition:
+  driver_age_band_codes: [4, 5]
+  description: "Driver aged 16 to 25 inclusive, per STATS19 age_band_of_driver codes 4 and 5. Configurable here, not hardcoded in UI copy."
+
+hotspot_methodology:
+  default_period_years: 3
+  minimum_sample_size_warning: 5
+  description: "Hotspot explorer ranks H3 cells over a rolling multi-year period by default to reduce single-year instability. Cells below the minimum sample size are flagged rather than hidden."

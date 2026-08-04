@@ -1,0 +1,53 @@
+# secrets: never commit
+.env
+.env.local
+.env.*.local
+.env.cockroach.*
+*.pem
+*.key
+COCKROACH_BOOTSTRAP_URL*
+
+# node
+node_modules/
+.pnpm-store/
+apps/web/.next/
+apps/web/out/
+apps/web/build/
+**/dist/
+**/coverage/
+*.tsbuildinfo
+.turbo/
+packages/database/generated/
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+services/ingestor/dist/
+services/ingestor/.eggs/
+*.egg-info/
+
+# data: never commit real datasets
+data/raw/
+data/processed/
+*.csv
+!services/ingestor/tests/**/*.csv
+*.zip
+!**/fixtures/**/*.zip
+
+# vercel
+.vercel
+
+# misc
+.DS_Store
+*.log
+logs/
+
+# playwright
+apps/web/test-results/
+apps/web/playwright-report/
+apps/web/blob-report/

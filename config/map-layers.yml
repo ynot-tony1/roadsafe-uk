@@ -1,0 +1,62 @@
+# Map layer and zoom-strategy configuration (spec section 9).
+# packages/shared/src/h3-strategy.ts is the executable source of truth for
+# the thresholds; this file documents the same values for non-TypeScript
+# consumers (the ingestor's build-h3 command reads it to know which
+# resolutions to precompute).
+
+zoom_strategy:
+  - zoom_max: 7
+    layer: "h3"
+    h3_resolution: 5
+    description: "National and regional view. Larger hexagons, total collisions and KSI counts only, no individual records downloaded."
+  - zoom_min: 8
+    zoom_max: 10
+    layer: "h3"
+    h3_resolution: 7
+    description: "City view. Smaller hexagons with severity and road-user composition."
+  - zoom_min: 11
+    zoom_max: 13
+    layer: "h3"
+    h3_resolution: 9
+    description: "Neighbourhood view. Finer hexagons, still aggregated."
+  - zoom_min: 14
+    layer: "points"
+    description: "Street-level view. Individual collision points, bounded query, capped result count."
+
+precomputed_h3_resolutions: [5, 7, 9]
+
+precomputed_filter_dimensions:
+  - "all"
+  - "severity"
+  - "road_user"
+
+point_layer:
+  default_limit: 2000
+  max_limit: 5000
+  max_bounding_box_area_deg2: 0.05
+  max_year_range: 5
+
+map_modes:
+  - id: "HEATMAP"
+    label: "Heatmap"
+  - id: "H3_HEXAGONS"
+    label: "H3 hexagons"
+  - id: "CLUSTERS"
+    label: "Clusters"
+  - id: "INDIVIDUAL_COLLISIONS"
+    label: "Individual collisions"
+  - id: "KSI_ONLY"
+    label: "Killed or seriously injured only"
+  - id: "PEDESTRIAN"
+    label: "Pedestrian involvement"
+  - id: "CYCLIST"
+    label: "Cyclist involvement"
+  - id: "MOTORCYCLIST"
+    label: "Motorcyclist involvement"
+  - id: "YOUNG_DRIVER"
+    label: "Young driver involvement"
+
+basemap:
+  style_url_env: "NEXT_PUBLIC_MAP_STYLE_URL"
+  attribution_env: "NEXT_PUBLIC_MAP_ATTRIBUTION"
+  notes: "Basemap provider is configurable via environment variable rather than hardcoded so the production usage terms can be reviewed independently of a code change. See docs/deployment.md."

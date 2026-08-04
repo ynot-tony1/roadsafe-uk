@@ -1,0 +1,106 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typescript:
+    name: TypeScript workspace
+    runs-on: ubuntu-latest
+    env:
+      # An empty, ephemeral CockroachDB instance, started below. Both
+      # apps/web's ISR pages (hotspots, local-authorities, road-users, the
+      # dashboard) and packages/database's own PrismaClient construction at
+      # module import time need a real, reachable database at build time,
+      # not just a syntactically valid connection string: `next build`
+      # actually queries the database while prerendering those pages.
+      DATABASE_URL: "postgresql://root@localhost:26257/road_safety?sslmode=disable"
+      SHADOW_DATABASE_URL: "postgresql://root@localhost:26257/road_safety_shadow?sslmode=disable"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      # GitHub Actions' `services:` block can't override a container's
+      # command, and start-single-node --insecure needs to be that command,
+      # so this runs the container directly rather than as a service.
+      - name: Start CockroachDB
+        run: |
+          docker run -d --name crdb -p 26257:26257 \
+            cockroachdb/cockroach:v24.3.1 start-single-node --insecure
+
+      - name: Wait for CockroachDB and create the database
+        run: |
+          for i in $(seq 1 30); do
+            if docker exec crdb ./cockroach sql --insecure -e "SELECT 1" > /dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+          docker exec crdb ./cockroach sql --insecure -e "CREATE DATABASE IF NOT EXISTS road_safety;"
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm db:generate
+
+      - name: Apply migrations
+        run: pnpm db:migrate:deploy
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+  python:
+    name: Python ingestor
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/ingestor
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.4.29"
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Ruff check
+        run: uv run ruff check .
+
+      - name: Ruff format check
+        run: uv run ruff format --check .
+
+      - name: Mypy
+        run: uv run mypy src
+
+      - name: Pytest
+        run: uv run pytest

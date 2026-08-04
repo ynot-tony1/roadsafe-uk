@@ -1,0 +1,355 @@
+{
+  "source_version": "data-guide-seed-2024",
+  "valid_from_year_default": 2005,
+  "definitions": {
+    "collision": {
+      "accident_severity": [
+        { "code": 1, "label": "Fatal" },
+        { "code": 2, "label": "Serious" },
+        { "code": 3, "label": "Slight" }
+      ],
+      "day_of_week": [
+        { "code": 1, "label": "Sunday" },
+        { "code": 2, "label": "Monday" },
+        { "code": 3, "label": "Tuesday" },
+        { "code": 4, "label": "Wednesday" },
+        { "code": 5, "label": "Thursday" },
+        { "code": 6, "label": "Friday" },
+        { "code": 7, "label": "Saturday" }
+      ],
+      "road_type": [
+        { "code": 1, "label": "Roundabout" },
+        { "code": 2, "label": "One way street" },
+        { "code": 3, "label": "Dual carriageway" },
+        { "code": 6, "label": "Single carriageway" },
+        { "code": 7, "label": "Slip road" },
+        { "code": 9, "label": "Unknown" },
+        { "code": 12, "label": "One way street or slip road" },
+        { "code": -1, "label": "Data missing or out of range" }
+      ],
+      "junction_detail": [
+        { "code": 0, "label": "Not at junction or within 20 metres" },
+        { "code": 1, "label": "Roundabout" },
+        { "code": 2, "label": "Mini roundabout" },
+        { "code": 3, "label": "T or staggered junction" },
+        { "code": 5, "label": "Slip road" },
+        { "code": 6, "label": "Crossroads" },
+        { "code": 7, "label": "More than 4 arms, not roundabout" },
+        { "code": 8, "label": "Private drive or entrance" },
+        { "code": 9, "label": "Other junction" },
+        { "code": -1, "label": "Data missing or out of range" }
+      ],
+      "junction_control": [
+        { "code": 0, "label": "Not at junction or within 20 metres" },
+        { "code": 1, "label": "Authorised person" },
+        { "code": 2, "label": "Automatic traffic signal" },
+        { "code": 3, "label": "Stop sign" },
+        { "code": 4, "label": "Give way or uncontrolled" },
+        { "code": -1, "label": "Data missing or out of range" }
+      ],
+      "light_conditions": [
+        { "code": 1, "label": "Daylight" },
+        { "code": 4, "label": "Darkness, lights lit" },
+        { "code": 5, "label": "Darkness, lights unlit" },
+        { "code": 6, "label": "Darkness, no lighting" },
+        { "code": 7, "label": "Darkness, lighting unknown" }
+      ],
+      "weather_conditions": [
+        { "code": 1, "label": "Fine, no high winds" },
+        { "code": 2, "label": "Raining, no high winds" },
+        { "code": 3, "label": "Snowing, no high winds" },
+        { "code": 4, "label": "Fine, high winds" },
+        { "code": 5, "label": "Raining, high winds" },
+        { "code": 6, "label": "Snowing, high winds" },
+        { "code": 7, "label": "Fog or mist" },
+        { "code": 8, "label": "Other" },
+        { "code": 9, "label": "Unknown" },
+        { "code": -1, "label": "Data missing or out of range" }
+      ],
+      "road_surface_conditions": [
+        { "code": 1, "label": "Dry" },
+        { "code": 2, "label": "Wet or damp" },
+        { "code": 3, "label": "Snow" },
+        { "code": 4, "label": "Frost or ice" },
+        { "code": 5, "label": "Flood over 3cm deep" },
+        { "code": 6, "label": "Oil or diesel" },
+        { "code": 7, "label": "Mud" },
+        { "code": -1, "label": "Data missing or out of range" }
+      ],
+      "special_conditions_at_site": [
+        { "code": 0, "label": "None" },
+        { "code": 1, "label": "Auto traffic signal out" },
+        { "code": 2, "label": "Auto signal part defective" },
+        { "code": 3, "label": "Road sign or marking defective or obscured" },
+        { "code": 4, "label": "Roadworks" },
+        { "code": 5, "label": "Road surface defective" },
+        { "code": 6, "label": "Oil or diesel" },
+        { "code": 7, "label": "Mud" },
+        { "code": -1, "label": "Data missing or out of range" }
+      ],
+      "carriageway_hazards": [
+        { "code": 0, "label": "None" },
+        { "code": 1, "label": "Vehicle load on road" },
+        { "code": 2, "label": "Other object on road" },
+        { "code": 3, "label": "Previous accident" },
+        { "code": 4, "label": "Dog on road" },
+        { "code": 5, "label": "Other animal on road" },
+        { "code": 6, "label": "Pedestrian in carriageway, not injured" },
+        { "code": 7, "label": "Any animal in carriageway, except ridden horse" },
+        { "code": -1, "label": "Data missing or out of range" }
+      ],
+      "urban_or_rural_area": [
+        { "code": 1, "label": "Urban" },
+        { "code": 2, "label": "Rural" },
+        { "code": 3, "label": "Unallocated" }
+      ],
+      "pedestrian_crossing_human_control": [
+        { "code": 0, "label": "None within 50 metres" },
+        { "code": 1, "label": "Control by school crossing patrol" },
+        { "code": 2, "label": "Control by other authorised person" },
+        { "code": -1, "label": "Data missing or out of range" }
+      ],
+      "pedestrian_crossing_physical_facilities": [
+        { "code": 0, "label": "No physical crossing within 50 metres" },
+        { "code": 1, "label": "Zebra" },
+        { "code": 4, "label": "Pelican, puffin, toucan or similar non-junction crossing" },
+        { "code": 5, "label": "Pedestrian phase at traffic signal junction" },
+        { "code": 7, "label": "Footbridge or subway" },
+        { "code": 8, "label": "Central refuge" },
+        { "code": -1, "label": "Data missing or out of range" }
+      ],
+      "first_road_class": [
+        { "code": 1, "label": "Motorway" },
+        { "code": 2, "label": "A(M)" },
+        { "code": 3, "label": "A" },
+        { "code": 4, "label": "B" },
+        { "code": 5, "label": "C" },
+        { "code": 6, "label": "Unclassified" }
+      ],
+      "second_road_class": [
+        { "code": 1, "label": "Motorway" },
+        { "code": 2, "label": "A(M)" },
+        { "code": 3, "label": "A" },
+        { "code": 4, "label": "B" },
+        { "code": 5, "label": "C" },
+        { "code": 6, "label": "Unclassified" }
+      ]
+    },
+    "vehicle": {
+      "vehicle_type": [
+        { "code": 1, "label": "Pedal cycle" },
+        { "code": 2, "label": "Motorcycle, 50cc and under" },
+        { "code": 3, "label": "Motorcycle, 125cc and under" },
+        { "code": 4, "label": "Motorcycle, over 125cc and up to 500cc" },
+        { "code": 5, "label": "Motorcycle, over 500cc" },
+        { "code": 8, "label": "Taxi or private hire car" },
+        { "code": 9, "label": "Car" },
+        { "code": 10, "label": "Minibus, 8 to 16 seats" },
+        { "code": 11, "label": "Bus or coach, 17 or more seats" },
+        { "code": 16, "label": "Ridden horse" },
+        { "code": 17, "label": "Agricultural vehicle" },
+        { "code": 18, "label": "Tram" },
+        { "code": 19, "label": "Van or goods vehicle, 3.5 tonnes and under" },
+        { "code": 20, "label": "Goods vehicle, over 3.5t and under 7.5t" },
+        { "code": 21, "label": "Goods vehicle, 7.5 tonnes and over" },
+        { "code": 22, "label": "Mobility scooter" },
+        { "code": 23, "label": "Electric motorcycle" },
+        { "code": 90, "label": "Other vehicle" },
+        { "code": 97, "label": "Motorcycle, unknown cc" },
+        { "code": 98, "label": "Goods vehicle, unknown weight" },
+        { "code": 99, "label": "Unknown vehicle type" }
+      ],
+      "towing_and_articulation": [
+        { "code": 0, "label": "No tow or articulation" },
+        { "code": 1, "label": "Articulated vehicle" },
+        { "code": 2, "label": "Double or multiple trailer" },
+        { "code": 3, "label": "Caravan" },
+        { "code": 4, "label": "Single trailer" },
+        { "code": 5, "label": "Other tow" },
+        { "code": -1, "label": "Data missing or out of range" }
+      ],
+      "junction_location": [
+        { "code": 0, "label": "Not at or within 20 metres of junction" },
+        { "code": 1, "label": "Approaching junction or waiting/parked at junction approach" },
+        { "code": 2, "label": "Cleared junction or waiting/parked at junction exit" },
+        { "code": 3, "label": "Leaving roundabout" },
+        { "code": 4, "label": "Entering roundabout" },
+        { "code": 5, "label": "Leaving main road" },
+        { "code": 6, "label": "Entering main road" },
+        { "code": 7, "label": "Entering from slip road" },
+        { "code": 8, "label": "Mid junction, on roundabout or on main road" },
+        { "code": -1, "label": "Data missing or out of range" }
+      ],
+      "skidding_and_overturning": [
+        { "code": 0, "label": "None" },
+        { "code": 1, "label": "Skidded" },
+        { "code": 2, "label": "Skidded and overturned" },
+        { "code": 3, "label": "Jackknifed" },
+        { "code": 4, "label": "Jackknifed and overturned" },
+        { "code": 5, "label": "Overturned" },
+        { "code": -1, "label": "Data missing or out of range" }
+      ],
+      "first_point_of_impact": [
+        { "code": 0, "label": "Did not impact" },
+        { "code": 1, "label": "Front" },
+        { "code": 2, "label": "Back" },
+        { "code": 3, "label": "Offside" },
+        { "code": 4, "label": "Nearside" },
+        { "code": -1, "label": "Data missing or out of range" }
+      ],
+      "journey_purpose": [
+        { "code": 1, "label": "Journey as part of work" },
+        { "code": 2, "label": "Commuting to or from work" },
+        { "code": 3, "label": "Taking pupil to or from school" },
+        { "code": 4, "label": "Pupil riding to or from school" },
+        { "code": 5, "label": "Other" },
+        { "code": 6, "label": "Not known" },
+        { "code": -1, "label": "Data missing or out of range" }
+      ],
+      "sex_of_driver": [
+        { "code": 1, "label": "Male" },
+        { "code": 2, "label": "Female" },
+        { "code": 9, "label": "Not known" },
+        { "code": -1, "label": "Data missing or out of range" }
+      ],
+      "age_band_of_driver": [
+        { "code": 1, "label": "0 to 5" },
+        { "code": 2, "label": "6 to 10" },
+        { "code": 3, "label": "11 to 15" },
+        { "code": 4, "label": "16 to 20" },
+        { "code": 5, "label": "21 to 25" },
+        { "code": 6, "label": "26 to 35" },
+        { "code": 7, "label": "36 to 45" },
+        { "code": 8, "label": "46 to 55" },
+        { "code": 9, "label": "56 to 65" },
+        { "code": 10, "label": "66 to 75" },
+        { "code": 11, "label": "Over 75" },
+        { "code": -1, "label": "Data missing or out of range" }
+      ],
+      "propulsion_code": [
+        { "code": 1, "label": "Petrol" },
+        { "code": 2, "label": "Heavy oil" },
+        { "code": 3, "label": "Electric" },
+        { "code": 4, "label": "Steam" },
+        { "code": 5, "label": "Gas" },
+        { "code": 6, "label": "Petrol or gas, LPG" },
+        { "code": 7, "label": "Gas or bi-fuel" },
+        { "code": 8, "label": "Hybrid electric" },
+        { "code": 9, "label": "Gas diesel" },
+        { "code": 10, "label": "New fuel technology" },
+        { "code": 11, "label": "Fuel cells" },
+        { "code": 12, "label": "Electric diesel" },
+        { "code": -1, "label": "Data missing or out of range" }
+      ]
+    },
+    "casualty": {
+      "casualty_class": [
+        { "code": 1, "label": "Driver or rider" },
+        { "code": 2, "label": "Passenger" },
+        { "code": 3, "label": "Pedestrian" }
+      ],
+      "sex_of_casualty": [
+        { "code": 1, "label": "Male" },
+        { "code": 2, "label": "Female" },
+        { "code": 9, "label": "Not known" },
+        { "code": -1, "label": "Data missing or out of range" }
+      ],
+      "age_band_of_casualty": [
+        { "code": 1, "label": "0 to 5" },
+        { "code": 2, "label": "6 to 10" },
+        { "code": 3, "label": "11 to 15" },
+        { "code": 4, "label": "16 to 20" },
+        { "code": 5, "label": "21 to 25" },
+        { "code": 6, "label": "26 to 35" },
+        { "code": 7, "label": "36 to 45" },
+        { "code": 8, "label": "46 to 55" },
+        { "code": 9, "label": "56 to 65" },
+        { "code": 10, "label": "66 to 75" },
+        { "code": 11, "label": "Over 75" },
+        { "code": -1, "label": "Data missing or out of range" }
+      ],
+      "casualty_severity": [
+        { "code": 1, "label": "Fatal" },
+        { "code": 2, "label": "Serious" },
+        { "code": 3, "label": "Slight" }
+      ],
+      "pedestrian_location": [
+        { "code": 0, "label": "Not a pedestrian" },
+        { "code": 1, "label": "Crossing on pedestrian crossing facility" },
+        { "code": 2, "label": "Crossing within zig-zag lines at crossing approach" },
+        { "code": 3, "label": "Crossing within zig-zag lines at crossing exit" },
+        { "code": 4, "label": "Crossing elsewhere within 50m of pedestrian crossing" },
+        { "code": 5, "label": "In carriageway, crossing elsewhere" },
+        { "code": 6, "label": "On footway or verge" },
+        { "code": 7, "label": "On refuge, central island or central reservation" },
+        { "code": 8, "label": "In centre of carriageway, not on refuge or island" },
+        { "code": 9, "label": "In carriageway, not crossing" },
+        { "code": 10, "label": "Unknown or other" },
+        { "code": -1, "label": "Data missing or out of range" }
+      ],
+      "pedestrian_movement": [
+        { "code": 0, "label": "Not a pedestrian" },
+        { "code": 1, "label": "Crossing from driver's nearside" },
+        { "code": 2, "label": "Crossing from nearside, masked by parked or stationary vehicle" },
+        { "code": 3, "label": "Crossing from driver's offside" },
+        { "code": 4, "label": "Crossing from offside, masked by parked or stationary vehicle" },
+        { "code": 5, "label": "In carriageway, stationary, not crossing" },
+        { "code": 6, "label": "In carriageway, stationary, not crossing, masked" },
+        { "code": 7, "label": "Walking along in carriageway, facing traffic" },
+        { "code": 8, "label": "Walking along in carriageway, back to traffic" },
+        { "code": 9, "label": "Unknown or other" },
+        { "code": -1, "label": "Data missing or out of range" }
+      ],
+      "car_passenger": [
+        { "code": 0, "label": "Not a car passenger" },
+        { "code": 1, "label": "Front seat passenger" },
+        { "code": 2, "label": "Rear seat passenger" },
+        { "code": 9, "label": "Unknown" }
+      ],
+      "bus_or_coach_passenger": [
+        { "code": 0, "label": "Not a bus or coach passenger" },
+        { "code": 1, "label": "Boarding" },
+        { "code": 2, "label": "Alighting" },
+        { "code": 3, "label": "Standing passenger" },
+        { "code": 4, "label": "Seated passenger" },
+        { "code": 9, "label": "Unknown" }
+      ],
+      "pedestrian_road_maintenance_worker": [
+        { "code": 0, "label": "No or not applicable" },
+        { "code": 1, "label": "Yes" },
+        { "code": 2, "label": "Not known" },
+        { "code": -1, "label": "Data missing or out of range" }
+      ],
+      "casualty_type": [
+        { "code": 0, "label": "Pedestrian" },
+        { "code": 1, "label": "Cyclist" },
+        { "code": 2, "label": "Motorcycle, 50cc and under, rider or passenger" },
+        { "code": 3, "label": "Motorcycle, 125cc and under, rider or passenger" },
+        { "code": 4, "label": "Motorcycle, over 125cc and up to 500cc, rider or passenger" },
+        { "code": 5, "label": "Motorcycle, over 500cc, rider or passenger" },
+        { "code": 8, "label": "Taxi or private hire car occupant" },
+        { "code": 9, "label": "Car occupant" },
+        { "code": 10, "label": "Minibus occupant" },
+        { "code": 11, "label": "Bus or coach occupant" },
+        { "code": 16, "label": "Horse rider" },
+        { "code": 17, "label": "Agricultural vehicle occupant" },
+        { "code": 18, "label": "Tram occupant" },
+        { "code": 19, "label": "Van or goods vehicle occupant, 3.5 tonnes and under" },
+        { "code": 20, "label": "Goods vehicle occupant, over 3.5t and under 7.5t" },
+        { "code": 21, "label": "Goods vehicle occupant, 7.5 tonnes and over" },
+        { "code": 22, "label": "Mobility scooter rider" },
+        { "code": 23, "label": "Electric motorcycle rider or passenger" },
+        { "code": 90, "label": "Other vehicle occupant" },
+        { "code": 97, "label": "Motorcycle, unknown cc, rider or passenger" },
+        { "code": 98, "label": "Goods vehicle, unknown weight, occupant" },
+        { "code": 99, "label": "Unknown vehicle type occupant" }
+      ],
+      "casualty_home_area_type": [
+        { "code": 1, "label": "Urban area" },
+        { "code": 2, "label": "Small town" },
+        { "code": 3, "label": "Rural" },
+        { "code": -1, "label": "Data missing or out of range" }
+      ]
+    }
+  }
+}

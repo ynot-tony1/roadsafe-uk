@@ -1,0 +1,333 @@
+// RoadSafe UK production schema
+// Source: DfT STATS19 road safety open data.
+// See docs/database.md for column-level provenance and docs/methodology.md
+// for definitions of every coded field.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/client"
+}
+
+datasource db {
+  provider          = "cockroachdb"
+  url               = env("DATABASE_URL")
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
+}
+
+// Enums
+
+enum SourceStatus {
+  FINAL
+  PROVISIONAL
+}
+
+enum IngestionStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+  PARTIAL
+}
+
+// Core STATS19 entities
+
+/// One police-reported personal-injury road collision.
+/// Primary key mirrors the DfT `accident_index` / `accident_reference` join key.
+model Collision {
+  collisionIndex String @id @map("collision_index")
+
+  accidentYear      Int    @map("accident_year")
+  accidentReference String @map("accident_reference")
+
+  locationEastingOsgr  Int?   @map("location_easting_osgr")
+  locationNorthingOsgr Int?   @map("location_northing_osgr")
+  longitude            Float? @map("longitude")
+  latitude             Float? @map("latitude")
+
+  policeForceCode  Int  @map("police_force_code")
+  severityCode     Int  @map("severity_code")
+  numberOfVehicles Int  @map("number_of_vehicles")
+  numberOfCasualties Int @map("number_of_casualties")
+
+  date          DateTime @map("date") @db.Date
+  dayOfWeekCode Int      @map("day_of_week_code")
+  time          String?  @map("time") @db.String(5)
+
+  localAuthorityDistrictCode String  @map("local_authority_district_code")
+  localAuthorityHighwayCode  String? @map("local_authority_highway_code")
+
+  firstRoadClassCode Int     @map("first_road_class_code")
+  firstRoadNumber    String? @map("first_road_number")
+  roadTypeCode       Int?    @map("road_type_code")
+  speedLimit         Int?    @map("speed_limit")
+
+  junctionDetailCode  Int?    @map("junction_detail_code")
+  junctionControlCode Int?    @map("junction_control_code")
+  secondRoadClassCode Int?    @map("second_road_class_code")
+  secondRoadNumber    String? @map("second_road_number")
+
+  pedestrianCrossingHumanControlCode      Int? @map("pedestrian_crossing_human_control_code")
+  pedestrianCrossingPhysicalFacilitiesCode Int? @map("pedestrian_crossing_physical_facilities_code")
+
+  lightConditionsCode        Int? @map("light_conditions_code")
+  weatherConditionsCode      Int? @map("weather_conditions_code")
+  roadSurfaceConditionsCode  Int? @map("road_surface_conditions_code")
+  specialConditionsAtSiteCode Int? @map("special_conditions_at_site_code")
+  carriagewayHazardsCode     Int? @map("carriageway_hazards_code")
+
+  urbanRuralCode           Int?    @map("urban_rural_code")
+  didPoliceOfficerAttendScene Int? @map("did_police_officer_attend_scene")
+  trunkRoadFlag             Boolean? @map("trunk_road_flag")
+
+  lsoaCode String? @map("lsoa_code")
+
+  h3Resolution5 String? @map("h3_resolution_5")
+  h3Resolution7 String? @map("h3_resolution_7")
+  h3Resolution9 String? @map("h3_resolution_9")
+
+  sourceStatus   SourceStatus @map("source_status")
+  sourceRevision String       @map("source_revision")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  vehicles  Vehicle[]
+  casualties Casualty[]
+
+  @@index([accidentYear])
+  @@index([date])
+  @@index([latitude, longitude])
+  @@index([localAuthorityDistrictCode])
+  @@index([policeForceCode])
+  @@index([severityCode])
+  @@index([h3Resolution5])
+  @@index([h3Resolution7])
+  @@index([h3Resolution9])
+  @@index([sourceStatus])
+  @@index([speedLimit])
+  @@index([urbanRuralCode])
+  @@map("collisions")
+}
+
+/// One vehicle involved in a collision (STATS19 "Vehicle" record).
+model Vehicle {
+  id             String @id @default(uuid())
+  collisionIndex String @map("collision_index")
+  vehicleReference Int  @map("vehicle_reference")
+
+  vehicleTypeCode              Int?    @map("vehicle_type_code")
+  towingAndArticulationCode    Int?    @map("towing_and_articulation_code")
+  vehicleManoeuvreCode         Int?    @map("vehicle_manoeuvre_code")
+  vehicleDirectionFromCode     Int?    @map("vehicle_direction_from_code")
+  vehicleDirectionToCode       Int?    @map("vehicle_direction_to_code")
+  vehicleLocationRestrictedLane Int?   @map("vehicle_location_restricted_lane")
+  junctionLocationCode         Int?    @map("junction_location_code")
+  skiddingAndOverturningCode   Int?    @map("skidding_and_overturning_code")
+  hitObjectInCarriagewayCode   Int?    @map("hit_object_in_carriageway_code")
+  vehicleLeavingCarriagewayCode Int?   @map("vehicle_leaving_carriageway_code")
+  hitObjectOffCarriagewayCode  Int?    @map("hit_object_off_carriageway_code")
+  firstPointOfImpactCode       Int?    @map("first_point_of_impact_code")
+  vehicleLeftHandDrive          Int?   @map("vehicle_left_hand_drive")
+  journeyPurposeCode           Int?    @map("journey_purpose_code")
+  sexOfDriverCode               Int?   @map("sex_of_driver_code")
+  ageOfDriver                   Int?   @map("age_of_driver")
+  ageBandOfDriverCode           Int?   @map("age_band_of_driver_code")
+  engineCapacityCc               Int?  @map("engine_capacity_cc")
+  propulsionCode                 Int?  @map("propulsion_code")
+  ageOfVehicle                   Int?  @map("age_of_vehicle")
+  genericMakeModel               String? @map("generic_make_model")
+  driverImdDecile                Int?  @map("driver_imd_decile")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  collision  Collision  @relation(fields: [collisionIndex], references: [collisionIndex], onDelete: Cascade)
+  casualties Casualty[]
+
+  @@unique([collisionIndex, vehicleReference])
+  @@index([vehicleTypeCode])
+  @@index([ageBandOfDriverCode])
+  @@map("vehicles")
+}
+
+/// One casualty resulting from a collision (STATS19 "Casualty" record).
+model Casualty {
+  id               String @id @default(uuid())
+  collisionIndex   String @map("collision_index")
+  vehicleReference Int?   @map("vehicle_reference")
+  casualtyReference Int   @map("casualty_reference")
+
+  casualtyClassCode Int? @map("casualty_class_code")
+  sexOfCasualtyCode Int? @map("sex_of_casualty_code")
+  // Exact age is retained only for verified internal aggregate calculation;
+  // all public-facing surfaces must read ageBandOfCasualtyCode instead. See docs/privacy.md.
+  ageOfCasualty      Int? @map("age_of_casualty")
+  ageBandOfCasualtyCode Int? @map("age_band_of_casualty_code")
+  casualtySeverityCode Int  @map("casualty_severity_code")
+
+  pedestrianLocationCode Int? @map("pedestrian_location_code")
+  pedestrianMovementCode Int? @map("pedestrian_movement_code")
+  carPassengerCode       Int? @map("car_passenger_code")
+  busOrCoachPassengerCode Int? @map("bus_or_coach_passenger_code")
+  pedestrianRoadMaintenanceWorkerCode Int? @map("pedestrian_road_maintenance_worker_code")
+  casualtyTypeCode       Int  @map("casualty_type_code")
+  casualtyHomeAreaTypeCode Int? @map("casualty_home_area_type_code")
+  casualtyImdDecile      Int? @map("casualty_imd_decile")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  collision Collision @relation(fields: [collisionIndex], references: [collisionIndex], onDelete: Cascade)
+  vehicle   Vehicle?  @relation(fields: [collisionIndex, vehicleReference], references: [collisionIndex, vehicleReference])
+
+  @@unique([collisionIndex, vehicleReference, casualtyReference])
+  @@index([casualtyTypeCode])
+  @@index([casualtySeverityCode])
+  @@index([ageBandOfCasualtyCode])
+  @@map("casualties")
+}
+
+// Reference / code-list data
+
+/// Human-readable label for every coded field value, versioned by STATS19
+/// guidance document release so historic codes remain interpretable.
+model CodeDefinition {
+  id            String @id @default(uuid())
+  datasetName   String @map("dataset_name")
+  fieldName     String @map("field_name")
+  code          Int    @map("code")
+  label         String @map("label")
+  validFromYear Int    @map("valid_from_year")
+  validToYear   Int?   @map("valid_to_year")
+  sourceVersion String @map("source_version")
+
+  @@unique([datasetName, fieldName, code, validFromYear])
+  @@index([fieldName])
+  @@map("code_definitions")
+}
+
+/// English/Welsh/Scottish local authority reference data used for the
+/// local-authority explorer and optional population-rate denominators.
+model LocalAuthority {
+  code   String @id
+  name   String
+  region String?
+
+  populationDenominator     Int?     @map("population_denominator")
+  populationDenominatorYear Int?     @map("population_denominator_year")
+  populationSource          String?  @map("population_source")
+
+  trafficDenominatorVehicleMiles Float?  @map("traffic_denominator_vehicle_miles")
+  trafficDenominatorYear         Int?    @map("traffic_denominator_year")
+  trafficSource                  String? @map("traffic_source")
+
+  roadLengthKm       Float?  @map("road_length_km")
+  roadLengthYear      Int?   @map("road_length_year")
+  roadLengthSource    String? @map("road_length_source")
+
+  boundaryGeoJsonUrl String? @map("boundary_geojson_url")
+
+  @@map("local_authorities")
+}
+
+// Precomputed aggregates
+
+/// Precomputed H3-cell metrics for a small set of high-value filter
+/// dimensions (e.g. severity, road-user type). Uncommon combinations are
+/// computed dynamically at query time instead of being materialised here.
+model H3Metric {
+  id       String @id @default(uuid())
+  h3Index  String @map("h3_index")
+  resolution Int  @map("resolution")
+
+  periodStart DateTime @map("period_start") @db.Date
+  periodEnd   DateTime @map("period_end") @db.Date
+
+  /// e.g. "all" | "severity" | "road_user" | "speed_limit"
+  filterDimension String @map("filter_dimension")
+  /// e.g. "all" | "fatal" | "pedestrian" | "30"
+  filterValue     String @map("filter_value")
+
+  collisionCount   Int @map("collision_count")
+  casualtyCount    Int @map("casualty_count")
+  fatalCount       Int @map("fatal_count")
+  seriousCount     Int @map("serious_count")
+  slightCount      Int @map("slight_count")
+  pedestrianCount  Int @map("pedestrian_count")
+  cyclistCount     Int @map("cyclist_count")
+  motorcyclistCount Int @map("motorcyclist_count")
+
+  calculatedAt   DateTime @default(now()) @map("calculated_at")
+  sourceImportId String   @map("source_import_id")
+
+  @@unique([h3Index, resolution, periodStart, periodEnd, filterDimension, filterValue])
+  @@index([resolution, periodStart, periodEnd])
+  @@index([h3Index])
+  @@map("h3_metrics")
+}
+
+/// Precomputed annual metrics sliced by geography / severity / road-user /
+/// road-condition / time-category, backing the dashboard and local-authority
+/// explorer without scanning raw tables on every request.
+model AnnualMetric {
+  id   String @id @default(uuid())
+  year Int
+
+  geographyType String  @map("geography_type") // "national" | "region" | "local_authority" | "police_force"
+  geographyCode String  @map("geography_code") // "GB" for national
+
+  severityCode  Int?    @map("severity_code")
+  roadUserType  String? @map("road_user_type") // "pedestrian" | "cyclist" | "motorcyclist" | "car_occupant" | ...
+  roadCondition String? @map("road_condition") // e.g. speed-limit band, weather, light
+  timeCategory  String? @map("time_category") // "hour" | "day_of_week" | "month" values encoded in dimensionValue
+
+  dimensionValue String? @map("dimension_value")
+
+  collisionCount Int @map("collision_count")
+  casualtyCount  Int @map("casualty_count")
+
+  sourceStatus SourceStatus @map("source_status")
+
+  calculatedAt   DateTime @default(now()) @map("calculated_at")
+  sourceImportId String   @map("source_import_id")
+
+  @@unique([year, geographyType, geographyCode, severityCode, roadUserType, roadCondition, timeCategory, dimensionValue, sourceStatus])
+  @@index([geographyType, geographyCode])
+  @@index([year])
+  @@map("annual_metrics")
+}
+
+// Operational tracking
+
+/// One execution of the ingestion pipeline for a single source year/status.
+model IngestionRun {
+  id             String @id @default(uuid())
+  sourceYear     Int    @map("source_year")
+  sourceStatus   SourceStatus @map("source_status")
+  sourceRevision String @map("source_revision")
+  sourceChecksum String @map("source_checksum")
+
+  status IngestionStatus @default(PENDING)
+
+  collisionsSeen Int @default(0) @map("collisions_seen")
+  vehiclesSeen   Int @default(0) @map("vehicles_seen")
+  casualtiesSeen Int @default(0) @map("casualties_seen")
+
+  rowsInserted Int @default(0) @map("rows_inserted")
+  rowsUpdated  Int @default(0) @map("rows_updated")
+  rowsRejected Int @default(0) @map("rows_rejected")
+
+  aggregatesCreated Int @default(0) @map("aggregates_created")
+
+  startedAt   DateTime  @default(now()) @map("started_at")
+  completedAt DateTime? @map("completed_at")
+
+  workflowRunId String? @map("workflow_run_id")
+  gitSha        String? @map("git_sha")
+  errorSummary  String? @map("error_summary") @db.String(4000)
+
+  @@index([sourceYear, sourceStatus])
+  @@index([status])
+  @@index([startedAt])
+  @@map("ingestion_runs")
+}

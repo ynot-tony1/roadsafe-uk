@@ -1,0 +1,74 @@
+name: Check road safety data
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+jobs:
+  discover:
+    name: Discover DfT publications
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/ingestor
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.4.29"
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync
+
+      # Cache keys are immutable, so each run writes a new key and reads
+      # the most recent previous one back via restore-keys, giving a diff
+      # against last week's discovery output without a database write.
+      - name: Restore previous discovery output
+        uses: actions/cache/restore@v4
+        with:
+          path: services/ingestor/.discovery-state/last-discover.txt
+          key: discovery-state-${{ github.run_id }}
+          restore-keys: |
+            discovery-state-
+
+      - name: Run discover
+        run: |
+          mkdir -p .discovery-state
+          uv run ingestor discover | tee .discovery-state/current-discover.txt
+
+      - name: Compare against previous discovery
+        id: compare
+        run: |
+          if [ -f .discovery-state/last-discover.txt ] && \
+             diff -q .discovery-state/last-discover.txt .discovery-state/current-discover.txt > /dev/null; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open issue on change
+        if: steps.compare.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue create \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "STATS19 discovery changed: $(date -u +%F)" \
+            --label data-update \
+            --body-file .discovery-state/current-discover.txt
+
+      - name: Save discovery output for next run
+        if: always()
+        run: cp .discovery-state/current-discover.txt .discovery-state/last-discover.txt
+
+      - name: Persist discovery state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: services/ingestor/.discovery-state/last-discover.txt
+          key: discovery-state-${{ github.run_id }}

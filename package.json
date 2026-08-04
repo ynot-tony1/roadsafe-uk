@@ -1,0 +1,26 @@
+{
+  "name": "roadsafe-uk",
+  "version": "0.1.0",
+  "private": true,
+  "description": "RoadSafe UK - map-based analysis of police-reported personal-injury road collisions in Great Britain",
+  "scripts": {
+    "dev": "pnpm --filter @roadsafe-uk/web dev",
+    "build": "pnpm --filter @roadsafe-uk/web build",
+    "lint": "pnpm -r --if-present lint",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "test": "pnpm -r --if-present test",
+    "test:e2e": "pnpm --filter @roadsafe-uk/web test:e2e",
+    "db:generate": "pnpm --filter @roadsafe-uk/database generate",
+    "db:migrate:deploy": "pnpm --filter @roadsafe-uk/database migrate:deploy"
+  },
+  "devDependencies": {
+    "prettier": "3.6.2"
+  },
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@11.18.0"
+}

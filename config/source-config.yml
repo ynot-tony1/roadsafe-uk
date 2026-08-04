@@ -1,0 +1,44 @@
+# Source discovery configuration for the ingestor's `discover` command.
+#
+# The ingestor must not hardcode a specific year's file URL permanently.
+# Instead it fetches this catalog page, parses the published dataset links,
+# and works out which years are final, which are provisional, and which
+# code list applies. This file only pins the stable catalog entry points,
+# not the individual per-year asset URLs, which change every publication.
+
+dft_road_safety:
+  # Catalog page listing every published STATS19 CSV/ZIP asset.
+  catalog_url: "https://data.dft.gov.uk/road-accidents-safety-data/dft-road-casualty-statistics-collision-last-5-years.csv"
+  metadata_url: "https://www.data.gov.uk/dataset/road-accidents-safety-data"
+  # data.gov.uk API used to enumerate resources and their revision timestamps.
+  ckan_api_url: "https://data.gov.uk/api/3/action/package_show?id=road-accidents-safety-data"
+
+  datasets:
+    collisions:
+      resource_name_pattern: "dft-road-casualty-statistics-collision"
+    vehicles:
+      resource_name_pattern: "dft-road-casualty-statistics-vehicle"
+    casualties:
+      resource_name_pattern: "dft-road-casualty-statistics-casualty"
+
+  code_lists:
+    resource_name_pattern: "road-safety-open-dataset-data-guide"
+
+optional_exposure_datasets:
+  road_traffic_estimates:
+    source: "Department for Transport, road traffic statistics (TRA)"
+    ckan_api_url: "https://data.gov.uk/api/3/action/package_show?id=gb-road-traffic-counts"
+    denominator: "vehicle_miles"
+    enabled: false
+  population_estimates:
+    source: "Office for National Statistics, mid-year population estimates"
+    denominator: "population"
+    enabled: false
+
+discovery:
+  # How many years back to scan when identifying the "latest five complete
+  # final years" window described in spec section 6.
+  max_years_to_scan: 10
+  # Ingestion of provisional data is a two-key switch: this repository
+  # default plus the GitHub repository variable PROVISIONAL_DATA_ENABLED.
+  provisional_import_default_enabled: false
