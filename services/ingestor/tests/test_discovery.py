@@ -1,7 +1,79 @@
+from datetime import date
+
 import httpx
 
 from roadsafe_ingestor import discovery
 from roadsafe_ingestor.settings import Settings
+
+# Shape of the real data.gov.uk CKAN response for this package: guidance
+# documents only, none of the actual bulk CSVs are listed as resources.
+# Captured by querying the live API directly, not hand-written to match
+# what the code expects.
+REAL_CKAN_PAYLOAD = {
+    "success": True,
+    "result": {
+        "metadata_modified": "2026-01-01T00:00:00",
+        "resources": [
+            {
+                "name": "Understanding historical road safety data",
+                "description": "",
+                "url": "https://data.dft.gov.uk/road-accidents-safety-data/Understanding-historical-road-safety-data.docx",
+                "format": ".docx",
+            },
+            {
+                "name": "Road Safety Statistics - User Feedback Survey",
+                "description": "",
+                "url": "https://www.smartsurvey.co.uk/s/road_safety_statistics_user_feedback/",
+                "format": "HTML",
+            },
+            {
+                "name": "Road Safety Data - Severity Adjustement Giudance",
+                "description": "",
+                "url": "https://data.dft.gov.uk/road-accidents-safety-data/dft-road-casualty-statistics-severity-adjustment-figure-guidance.docx",
+                "format": ".docx",
+            },
+            {
+                "name": "Road Safety Open Data Guide - 2024",
+                "description": "",
+                "url": "https://data.dft.gov.uk/road-accidents-safety-data/dft-road-casualty-statistics-road-safety-open-dataset-data-guide-2024.xlsx",
+                "format": ".xlsx",
+            },
+            {
+                "name": "Road Safety Data",
+                "description": "",
+                "url": "https://www.gov.uk/government/statistics/road-safety-data",
+                "format": "HTML",
+            },
+        ],
+    },
+}
+
+
+def _fake_client_real_shape() -> httpx.Client:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=REAL_CKAN_PAYLOAD)
+
+    transport = httpx.MockTransport(handler)
+    return httpx.Client(transport=transport)
+
+
+def test_discover_resources_falls_back_to_direct_url_when_ckan_has_no_match():
+    settings = Settings()
+
+    with _fake_client_real_shape() as client:
+        resources = discovery.discover_resources(client, settings)
+
+    kinds_found = {r.kind for r in resources}
+    assert discovery.DatasetKind.COLLISIONS in kinds_found
+    assert discovery.DatasetKind.VEHICLES in kinds_found
+    assert discovery.DatasetKind.CASUALTIES in kinds_found
+
+    collision_resource = next(r for r in resources if r.kind is discovery.DatasetKind.COLLISIONS)
+    assert collision_resource.url.startswith("https://data.dft.gov.uk/")
+    assert not collision_resource.is_provisional
+    this_year = date.today().year
+    assert collision_resource.years_mentioned == list(range(this_year - 5, this_year))
+
 
 FAKE_CKAN_PAYLOAD = {
     "success": True,

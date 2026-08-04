@@ -1,25 +1,30 @@
 # Source discovery configuration for the ingestor's `discover` command.
 #
-# The ingestor must not hardcode a specific year's file URL permanently.
-# Instead it fetches this catalog page, parses the published dataset links,
-# and works out which years are final, which are provisional, and which
-# code list applies. This file only pins the stable catalog entry points,
-# not the individual per-year asset URLs, which change every publication.
+# The ingestor prefers CKAN's resource listing (works out which years are
+# final vs. provisional from resource names and descriptions, so it does
+# not need updating on every publication), and falls back to each
+# dataset's direct_url below when CKAN doesn't list a matching resource.
 
 dft_road_safety:
-  # Catalog page listing every published STATS19 CSV/ZIP asset.
-  catalog_url: "https://data.dft.gov.uk/road-accidents-safety-data/dft-road-casualty-statistics-collision-last-5-years.csv"
   metadata_url: "https://www.data.gov.uk/dataset/road-accidents-safety-data"
   # data.gov.uk API used to enumerate resources and their revision timestamps.
   ckan_api_url: "https://data.gov.uk/api/3/action/package_show?id=road-accidents-safety-data"
 
+  # The live data.gov.uk CKAN package for this dataset does not actually
+  # list the bulk CSV files as resources (confirmed by querying it
+  # directly), only guidance documents. The files exist regardless, at a
+  # fixed, versionless URL per dataset kind. direct_url is the fallback
+  # used when CKAN's resource list has no match for resource_name_pattern.
   datasets:
     collisions:
       resource_name_pattern: "dft-road-casualty-statistics-collision"
+      direct_url: "https://data.dft.gov.uk/road-accidents-safety-data/dft-road-casualty-statistics-collision-last-5-years.csv"
     vehicles:
       resource_name_pattern: "dft-road-casualty-statistics-vehicle"
+      direct_url: "https://data.dft.gov.uk/road-accidents-safety-data/dft-road-casualty-statistics-vehicle-last-5-years.csv"
     casualties:
       resource_name_pattern: "dft-road-casualty-statistics-casualty"
+      direct_url: "https://data.dft.gov.uk/road-accidents-safety-data/dft-road-casualty-statistics-casualty-last-5-years.csv"
 
   code_lists:
     resource_name_pattern: "road-safety-open-dataset-data-guide"

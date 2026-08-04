@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import date
 from enum import Enum
 from typing import Any, cast
 
@@ -101,8 +102,45 @@ def discover_resources(client: httpx.Client, settings: Settings) -> list[Discove
                 )
                 break
 
+    # The live CKAN package for this dataset does not list the bulk CSVs
+    # as resources at all, only guidance documents (confirmed against the
+    # real API, not assumed). Fall back to each dataset's configured
+    # direct_url when nothing in CKAN's resource list matched.
+    found_kinds = {r.kind for r in discovered}
+    for kind in (DatasetKind.COLLISIONS, DatasetKind.VEHICLES, DatasetKind.CASUALTIES):
+        if kind in found_kinds:
+            continue
+        dataset_config = dft["datasets"].get(kind.value, {})
+        direct_url = dataset_config.get("direct_url")
+        if not direct_url:
+            continue
+        discovered.append(_fallback_resource(kind, direct_url, revision))
+
     logger.info("discovered %d matching resources of %d total", len(discovered), len(resources))
     return discovered
+
+
+def _fallback_resource(kind: DatasetKind, url: str, revision: str) -> DiscoveredResource:
+    """Builds a DiscoveredResource for a dataset kind CKAN doesn't list.
+
+    The direct_url files are always named "*-last-5-years.csv", a rolling
+    window of the 5 most recently completed calendar years (verified
+    against the live file: on 2026-08-04 it contained exactly 2021 to
+    2025). There's no per-year resource to inspect for a year list, so
+    this is computed from today's date rather than parsed from anything.
+    """
+    today = date.today()
+    years = list(range(today.year - 5, today.year))
+    return DiscoveredResource(
+        kind=kind,
+        name=url.rsplit("/", 1)[-1],
+        url=url,
+        format="CSV",
+        is_provisional=False,
+        years_mentioned=years,
+        last_modified=None,
+        revision=revision,
+    )
 
 
 def select_final_years(resources: list[DiscoveredResource], *, max_years: int) -> list[int]:
