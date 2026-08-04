@@ -30,6 +30,13 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
+      # See ingest-road-safety.yml: INGEST_DATABASE_URL needs a CA cert at
+      # this default path, sslrootcert=system doesn't reliably work here.
+      - name: Install CockroachDB CA certificate
+        run: |
+          mkdir -p ~/.postgresql
+          cp ../../config/certs/cockroachdb-ca.crt ~/.postgresql/root.crt
+
       - name: Rebuild H3 aggregates
         env:
           YEAR: ${{ inputs.year }}

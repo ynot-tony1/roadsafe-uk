@@ -333,6 +333,38 @@ visible by reading the traceback's captured locals.
 **Fix**: added `conn.rollback()` in `cli.py`'s `run` command exception
 handler before calling `complete_run`.
 
+## GitHub Actions leaked a database password via a connection failure
+
+`ingest-road-safety.yml`'s connection string carries `sslmode=verify-full`,
+which by default expects a CA certificate at `~/.postgresql/root.crt`.
+That file exists on this project's local dev machine (placed there
+during initial CockroachDB Cloud setup) but not on a fresh GitHub
+Actions runner, so every dispatched run failed immediately at the first
+database connection. psycopg's error formatter then dumped the full
+connection parameter dict, including the plaintext password, into the
+job's log output, in a public repository.
+
+**Impact and response**: no data was written, every run failed before
+reaching any import step. The four affected workflow run logs were
+deleted immediately. The `roadsafe_ingestor` password itself had to be
+rotated by the user directly through the CockroachDB Cloud console:
+`roadsafe_migrator` lacks `CREATEROLE`, and the original bootstrap admin
+credential (the only role with permission to rotate another role's
+password) had already been deliberately deleted earlier in the project,
+per this project's own credential-handling rule, so nothing in the
+repository or its CI could self-service the rotation.
+
+**Root cause**: the local `~/.postgresql/root.crt` file's issuer is
+"ISRG Root X1", Let's Encrypt's public root CA, already present in the
+default trust store of essentially every OS, including GitHub's runners.
+There was never a need to distribute a custom certificate file at all.
+
+**Fix**: added `sslrootcert=system` to `INGEST_DATABASE_URL` (both the
+GitHub secret and the local `.env` copy), telling psycopg to validate
+against the OS's own CA bundle instead of looking for a specific file
+path. Verified against a fresh connection with the rotated credential
+before re-running any import.
+
 ## Vercel
 
 ### A gitignored generated Prisma client never reaches the Vercel build

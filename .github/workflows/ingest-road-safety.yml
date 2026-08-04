@@ -42,6 +42,17 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
+      # INGEST_DATABASE_URL uses sslmode=verify-full, which looks for a CA
+      # certificate at this exact default path if no sslrootcert override
+      # is given. The committed cert is CockroachDB Cloud's actual CA
+      # (Let's Encrypt's public ISRG Root X1, not a secret), copied here
+      # rather than trusting the runner's system store, which doesn't
+      # reliably expose it to libpq the way `sslrootcert=system` assumes.
+      - name: Install CockroachDB CA certificate
+        run: |
+          mkdir -p ~/.postgresql
+          cp ../../config/certs/cockroachdb-ca.crt ~/.postgresql/root.crt
+
       - name: Refuse provisional data unless explicitly enabled
         if: inputs.source_status == 'PROVISIONAL' && vars.PROVISIONAL_DATA_ENABLED != 'true'
         run: |
