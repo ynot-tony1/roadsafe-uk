@@ -44,12 +44,17 @@ retry_on_serialization_conflict = retry(
 
 @contextmanager
 def connect(database_url: str) -> Iterator[Connection]:
-    # A long-running import once hung for over an hour with no active query
-    # on the cluster (confirmed via SHOW CLUSTER QUERIES): the socket had
-    # gone dead (a cloud load balancer dropping an idle connection without
-    # sending a TCP RST is the usual cause) and psycopg was blocked on a
-    # read that would never return. TCP keepalives make that failure surface
-    # in seconds instead of hanging indefinitely.
+    # A long-running import twice hung for 50+ minutes with no active query
+    # visible on the cluster (confirmed via SHOW CLUSTER QUERIES) and no
+    # data growth on a second attempt even after adding TCP keepalives
+    # below. CockroachDB Cloud terminates client connections at a SQL proxy
+    # in front of the actual nodes; if the proxy loses track of the backend
+    # but keeps the client-facing TCP socket answering, keepalives never
+    # see a problem because that hop of the connection is genuinely still
+    # alive. statement_timeout is enforced by the database itself, so it
+    # still returns a clean, retryable error even when the failure is on
+    # the proxy-to-backend hop, not the client-to-proxy one that keepalives
+    # can see.
     with psycopg.connect(
         database_url,
         autocommit=False,
@@ -58,6 +63,7 @@ def connect(database_url: str) -> Iterator[Connection]:
         keepalives_idle=20,
         keepalives_interval=10,
         keepalives_count=3,
+        options="-c statement_timeout=120000",
     ) as conn:
         yield conn
 

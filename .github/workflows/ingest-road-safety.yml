@@ -24,6 +24,12 @@ jobs:
     # check-road-safety-data.yml), this variable is the switch that turns
     # that decision into an actual import.
     if: vars.INGESTION_ENABLED == 'true'
+    # A run has twice hung for 50+ minutes on a database connection that
+    # looked alive at the TCP level but was not actually making progress
+    # (see db.py's statement_timeout for the underlying fix). This bounds
+    # the damage if some other, not yet seen, hang mode shows up: every
+    # observed successful run has finished in under 45 minutes.
+    timeout-minutes: 60
     defaults:
       run:
         working-directory: services/ingestor

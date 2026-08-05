@@ -12,6 +12,8 @@ jobs:
   rebuild:
     name: Rebuild h3_metrics and annual_metrics
     runs-on: ubuntu-latest
+    # See ingest-road-safety.yml: a bound against the same kind of hang.
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: services/ingestor
