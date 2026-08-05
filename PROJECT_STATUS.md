@@ -1,9 +1,8 @@
 # RoadSafe UK, build status
 
-Last updated: 2026-08-04, paused at the user's request so they can power
-down for the night. The five-year STATS19 import is running unattended on
-GitHub Actions (see "In progress" below), it does not depend on this
-machine staying on.
+Last updated: 2026-08-05. The full five-year STATS19 import (2021-2025) is
+complete and verified. Not yet redeployed to Vercel with the fresh data,
+that's the next step.
 
 ## Where the code lives
 
@@ -12,14 +11,16 @@ branch). Deployed to Vercel: project `roadsafe-uk` under the `tony-f5c4`
 team, preview URL `https://roadsafe-kkzewjwfr-tony-f5c4.vercel.app`
 (protected by Vercel's deployment protection SSO wall, use `vercel curl`
 to check it, not plain `curl`). No production deploy yet, that's still
-pending the five-year import finishing (see "Exact next steps").
+pending a redeploy against the now-complete dataset (see "Exact next
+steps").
 
-CockroachDB Cloud: cluster `silent-jindo`, database `road_safety`, live
-and currently mid-import. As of this update: 151,927+ collisions (growing),
-183,514 vehicles, 127,152 casualties, all from the 2024 calibration year
-plus however much of 2025/2023/2022/2021 has landed since. Check `/status`
-on the deployed app, or `SELECT count(*) FROM collisions` directly, for
-the current number.
+CockroachDB Cloud: cluster `silent-jindo`, database `road_safety`, live,
+all five years (2021-2025) imported and verified. `SELECT source_year,
+status, collisions_seen, vehicles_seen, casualties_seen FROM
+ingestion_runs WHERE status = 'SUCCEEDED'` shows all five as `SUCCEEDED`,
+513,801 collisions, 937,265 vehicles, 652,821 casualties total seen
+(rejects are the tiny fraction of rows STATS19 itself flags as invalid,
+see `ingestion_runs.rows_rejected`, not an ingestor bug).
 
 ## Completed and verified this session
 
@@ -235,83 +236,93 @@ Response, in order:
   (`collision_index` is unique per year) there's no correctness reason
   to serialise them, running in parallel avoids the problem outright.
 
-## In progress
+## Fixed today (2026-08-05), resuming from the overnight pause
 
-Dispatched via `gh workflow run ingest-road-safety.yml` for years 2025,
-2023, 2022, and 2021, running in parallel on GitHub's infrastructure,
-**not dependent on this machine staying on**. This is the user-approved
-full five-year import (explicit go-ahead given this session, spec
-section 20's approval gate satisfied).
+Checking the overnight import (the "Exact next steps" list from
+2026-08-04) surfaced four more real, previously-undiscovered bugs, all
+found by insisting on actual verification rather than trusting a green
+workflow run:
 
-The first 2021 dispatch failed after 50 seconds with a transient
-`OperationalError: server closed the connection unexpectedly`, most
-likely four jobs' `import-code-lists` step hitting the free tier
-around the same second, not a code bug (no password leaked this time,
-confirming the `pretty_exceptions_show_locals=False` fix works). The
-failed run's log was deleted and 2021 was redispatched on its own.
-As of pausing: 2025/2023/2022 have been running for several minutes
-with rows visibly increasing (collisions past 224,927 and climbing),
-2021's solo redispatch just started.
+1. **`local_authority_district_code` was always `-1` for 99.97% of
+   rows.** DfT renamed `local_authority_district` to
+   `local_authority_ons_district` (the real ONS GSS code) at some point
+   and kept the old column in the CSV, permanently `-1`. The ingestor
+   was still reading the dead column. Fixed in
+   `services/ingestor/src/roadsafe_ingestor/models.py`; since the
+   import is an upsert keyed on `collision_index`, redispatching every
+   year with the fix corrected the existing rows in place, no data was
+   lost or duplicated.
+2. **`available-filters/route.ts`'s `CODE_LIST_FIELDS` used
+   `_code`-suffixed names that never matched
+   `code_definitions.field_name`** (seeded without the suffix), so
+   every `codeLists` entry was an empty array. Fixed by renaming the
+   route's field list to match the seed data already in the database
+   (the lower-risk of the two options noted yesterday, nothing to
+   re-import).
+3. **`local_authorities` had never been seeded from anywhere.** Added
+   `config/local-authorities/local-authorities.json`, a real copy of
+   the ONS Open Geography Portal's "Local Authority Districts (April
+   2025) Names and Codes in the UK (V2)" dataset filtered to Great
+   Britain (350 rows; STATS19 does not cover Northern Ireland), plus
+   `services/ingestor/src/roadsafe_ingestor/importers/local_authorities.py`
+   and an `import-local-authorities` CLI command wired into
+   `ingest-road-safety.yml`. `region` is the country derived from the
+   GSS code prefix (England/Scotland/Wales), not the finer ONS England
+   region breakdown, a deliberate scope cut, see
+   `config/local-authorities/local-authorities.json`'s `note` field.
+   **Known small gap:** 20 local authority codes appear in 2021-2025
+   collision data but aren't in the April 2025 snapshot (roughly 9,600
+   of 513,801 collisions, under 2%), almost entirely pre-2023 English
+   district councils since merged into unitary authorities (the old
+   North Yorkshire and Cumbria districts) plus `EHEATHROW`, which looks
+   like a DfT special code for Heathrow Airport's private road network
+   but that could not be confirmed against an authoritative source, so
+   it is left unexplained rather than guessed at. These collisions
+   still count correctly everywhere; only the local-authority name
+   lookup for those specific codes is missing.
+4. **Two real ingestion reliability bugs, not just bad luck:**
+   `build_h3_all_dimension` and `build_national_annual_metrics` each
+   ran their own commit outside `execute_batch_upsert`'s existing
+   retry-on-serialization-conflict decorator, so a CockroachDB
+   `SerializationFailure` there (routine under concurrent writes, not a
+   bug in itself) was fatal instead of retried, this is what actually
+   failed three of five years on today's first parallel redispatch, and
+   in hindsight also explains an aggregate-build failure from
+   yesterday's run. Fixed by sharing one retry decorator
+   (`db.retry_on_serialization_conflict`) across all three functions.
+   Separately, a large single-year import (2025) hung twice for 50+
+   minutes with zero query activity visible on the cluster
+   (`SHOW CLUSTER QUERIES`), most likely CockroachDB Cloud's SQL proxy
+   losing track of the backend while keeping the client-facing socket
+   alive, a failure mode neither TCP keepalives nor a server-enforced
+   `statement_timeout` can see, since neither hop of that broken
+   connection is the one either mechanism is watching. Both were added
+   anyway as real, if partial, mitigations, and
+   `timeout-minutes: 120` on the ingest job is the actual backstop,
+   confirmed working (cancelled a hung run cleanly rather than leaving
+   it to GitHub's multi-hour default).
 
-Check progress with `gh run list --workflow=ingest-road-safety.yml -R
-ynot-tony1/roadsafe-uk`, or query `road_safety` directly
-(`SELECT source_year, status, collisions_seen, vehicles_seen,
-casualties_seen FROM ingestion_runs ORDER BY started_at DESC`), or check
-`/status` on the deployed app once redeployed with fresh data. If any
-run shows `FAILED` on resume, check `ingestion_runs.error_summary` for
-that row before retrying, if it's the same transient connection error,
-just redispatch that one year alone.
-
-## Known issue, not yet fixed
-
-`apps/web/app/api/map/available-filters/route.ts`'s `CODE_LIST_FIELDS`
-uses `_code`-suffixed names (`weather_conditions_code`, etc.) to query
-`code_definitions.field_name`, but the seed data in
-`config/stats19-code-lists/code-lists.json` (and therefore the 273 rows
-already imported into the live database) uses the raw STATS19 names
-without the suffix (`weather_conditions`, etc.). Every entry in the
-route's `codeLists` response is currently an empty array as a result,
-found while spot-checking `/api/map/available-filters` against real
-data (`localAuthorities` is separately empty too, that table has never
-been seeded at all, a bigger gap, see below).
-
-Needs a decision, not just a fix: either rename the route's field list
-to match what's already in the database (lowest risk, nothing to
-re-import), or rename the seed data and re-import code lists (cleaner
-long-term if `_code` is meant to be the project-wide convention). Left
-for next session rather than guessed at under time pressure.
-
-Also noted, same investigation: `local_authorities` has never been
-seeded from anywhere, `/api/map/available-filters`'s `localAuthorities`
-array is empty regardless of how much collision data exists. No
-importer or seed file for this table exists yet, this is a real gap in
-the pipeline, not a bug in an existing importer, needs its own design
-decision (where does authoritative English/Welsh/Scottish local
-authority reference data come from, ONS boundary files most likely).
+All five years were then redispatched with every fix in place. Final
+state, confirmed by querying `ingestion_runs` directly rather than
+trusting the workflow UI: all five show `status = 'SUCCEEDED'`, all
+five have H3 and annual aggregates built (`h3_metrics` has exactly 5
+distinct `source_import_id`s, one per year), and
+`local_authority_district_code` now holds real ONS codes.
 
 ## Exact next steps, in order
 
-1. Check the four ingestion workflow runs actually finished
-   (`gh run list --workflow=ingest-road-safety.yml`), and that all
-   five years (2021 through 2025) verify cleanly. If any show `FAILED`
-   or `PARTIAL`, check `ingestion_runs.error_summary` for that run
-   before retrying it.
-2. Decide and fix the `available-filters` field-name mismatch above.
-3. Decide where local authority reference data comes from and seed it,
-   `/local-authorities` and the map's per-authority filtering are
-   currently non-functional without it.
-4. Redeploy to Vercel (`vercel deploy` from the repo root) so the ISR
+1. Redeploy to Vercel (`vercel deploy` from the repo root) so the ISR
    pages (`/`, `/hotspots`, `/local-authorities`, `/road-users`)
-   prerender against the now-complete five-year dataset instead of
-   their last snapshot.
-5. `vercel deploy --prod` once the above is confirmed working on a
+   prerender against the now-complete, now-correct five-year dataset
+   instead of their last snapshot.
+2. Spot-check `/api/map/available-filters` on the fresh preview: confirm
+   `codeLists` entries are now populated and `localAuthorities` has
+   350 entries.
+3. `vercel deploy --prod` once the above is confirmed working on a
    fresh preview, then walk the full spec section 23 acceptance
    checklist against the live production system.
 
 ## How to resume
 
-Just say "continue". Nothing was left mid-operation on this machine: the
-remaining ingestion runs live entirely on GitHub's infrastructure and
-will finish (or fail visibly, checkable via `gh run list`) independent of
-whether this computer is on. No local dev server, docker container, or
-background process was left running.
+Just say "continue". Nothing is running in the background and nothing
+was left mid-operation on this machine.
