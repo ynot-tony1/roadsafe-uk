@@ -14,6 +14,7 @@ from datetime import date
 
 from psycopg import Connection
 
+from roadsafe_ingestor.db import retry_on_serialization_conflict
 from roadsafe_ingestor.logging_config import get_logger, log_extra
 
 logger = get_logger(__name__)
@@ -67,6 +68,7 @@ DO UPDATE SET
 _H3_COLUMN_BY_RESOLUTION = {5: "h3_resolution_5", 7: "h3_resolution_7", 9: "h3_resolution_9"}
 
 
+@retry_on_serialization_conflict
 def build_h3_all_dimension(
     conn: Connection,
     *,

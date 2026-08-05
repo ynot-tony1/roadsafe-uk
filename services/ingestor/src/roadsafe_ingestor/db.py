@@ -26,6 +26,22 @@ def _is_serialization_conflict(exc: BaseException) -> bool:
     return isinstance(exc, psycopg.errors.SerializationFailure)
 
 
+# Shared by every function in this codebase that executes then commits a
+# write transaction, not just execute_batch_upsert: CockroachDB's
+# SERIALIZABLE isolation means a conflicting concurrent transaction (for
+# example two years' worth of aggregate-building running in parallel, both
+# touching overlapping key ranges) is a routine, expected outcome under
+# contention, not a bug, and the whole transaction must be retried from its
+# first statement, a bare retry on commit() alone would not re-run the
+# writes that preceded it.
+retry_on_serialization_conflict = retry(
+    retry=retry_if_exception(_is_serialization_conflict),
+    stop=stop_after_attempt(5),
+    wait=wait_exponential(multiplier=0.5, max=8),
+    reraise=True,
+)
+
+
 @contextmanager
 def connect(database_url: str) -> Iterator[Connection]:
     # A long-running import once hung for over an hour with no active query
@@ -46,12 +62,7 @@ def connect(database_url: str) -> Iterator[Connection]:
         yield conn
 
 
-@retry(
-    retry=retry_if_exception(_is_serialization_conflict),
-    stop=stop_after_attempt(5),
-    wait=wait_exponential(multiplier=0.5, max=8),
-    reraise=True,
-)
+@retry_on_serialization_conflict
 def execute_batch_upsert(
     conn: Connection,
     *,

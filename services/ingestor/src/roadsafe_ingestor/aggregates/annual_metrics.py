@@ -8,6 +8,7 @@ from typing import Any
 
 from psycopg import Connection
 
+from roadsafe_ingestor.db import retry_on_serialization_conflict
 from roadsafe_ingestor.logging_config import get_logger, log_extra
 
 logger = get_logger(__name__)
@@ -54,6 +55,7 @@ _ROAD_USER_TYPE_CASE_SQL = """
 """
 
 
+@retry_on_serialization_conflict
 def build_national_annual_metrics(conn: Connection, *, year: int, source_import_id: str) -> int:
     rows: list[tuple[Any, ...]] = []
 
