@@ -1,0 +1,61 @@
+name: Import road network
+
+on:
+  workflow_dispatch:
+    inputs:
+      geofabrik_path:
+        description: >-
+          Geofabrik download path suffix, without the -latest.osm.pbf part
+          (e.g. "europe/united-kingdom/england/cumbria",
+          "europe/united-kingdom/scotland").
+        required: true
+        type: string
+
+jobs:
+  import:
+    name: Import one region's road network
+    runs-on: ubuntu-latest
+    # A single region's import is a lot smaller than a full STATS19 year
+    # (see docs/road-safety-ratings.md for a per-region timing baseline),
+    # 60 minutes is a generous multiple of that even for the largest
+    # county-sized extracts.
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: services/ingestor
+    env:
+      INGEST_DATABASE_URL: ${{ secrets.INGEST_DATABASE_URL }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.4.29"
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync
+
+      # See ingest-road-safety.yml: same reasoning, same committed cert.
+      - name: Install CockroachDB CA certificate
+        run: |
+          mkdir -p ~/.postgresql
+          cp ../../config/certs/cockroachdb-ca.crt ~/.postgresql/root.crt
+
+      - name: Download OSM extract
+        env:
+          GEOFABRIK_PATH: ${{ inputs.geofabrik_path }}
+        run: |
+          mkdir -p data/raw
+          curl -sL -o data/raw/region.osm.pbf \
+            "https://download.geofabrik.de/${GEOFABRIK_PATH}-latest.osm.pbf"
+          ls -la data/raw/region.osm.pbf
+
+      - name: Import road network
+        run: uv run ingestor import-road-network data/raw/region.osm.pbf
+
+      - name: Clean up downloaded file
+        if: always()
+        run: rm -f data/raw/region.osm.pbf

@@ -1,0 +1,42 @@
+name: Finalize road safety ratings
+
+on:
+  workflow_dispatch:
+
+jobs:
+  finalize:
+    name: Snap collisions to roads and compute ratings
+    runs-on: ubuntu-latest
+    # Benchmarked around 900-1000 collisions/second once the road network
+    # for the whole country is loaded (see docs/road-safety-ratings.md);
+    # even a generous margin over the full 513k-collision dataset fits
+    # comfortably inside this. Run this only after every
+    # "Import road network" region dispatch has finished, snapping a
+    # collision to a road that hasn't been imported yet just means it
+    # stays unmatched, it's always safe to re-run once more regions land.
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: services/ingestor
+    env:
+      INGEST_DATABASE_URL: ${{ secrets.INGEST_DATABASE_URL }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.4.29"
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Install CockroachDB CA certificate
+        run: |
+          mkdir -p ~/.postgresql
+          cp ../../config/certs/cockroachdb-ca.crt ~/.postgresql/root.crt
+
+      - name: Snap collisions to roads and compute ratings
+        run: uv run ingestor snap-roads
