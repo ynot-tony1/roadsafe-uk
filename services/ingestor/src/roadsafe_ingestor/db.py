@@ -28,7 +28,21 @@ def _is_serialization_conflict(exc: BaseException) -> bool:
 
 @contextmanager
 def connect(database_url: str) -> Iterator[Connection]:
-    with psycopg.connect(database_url, autocommit=False) as conn:
+    # A long-running import once hung for over an hour with no active query
+    # on the cluster (confirmed via SHOW CLUSTER QUERIES): the socket had
+    # gone dead (a cloud load balancer dropping an idle connection without
+    # sending a TCP RST is the usual cause) and psycopg was blocked on a
+    # read that would never return. TCP keepalives make that failure surface
+    # in seconds instead of hanging indefinitely.
+    with psycopg.connect(
+        database_url,
+        autocommit=False,
+        connect_timeout=10,
+        keepalives=1,
+        keepalives_idle=20,
+        keepalives_interval=10,
+        keepalives_count=3,
+    ) as conn:
         yield conn
 
 
