@@ -29,6 +29,16 @@ enum IngestionStatus {
   PARTIAL
 }
 
+/// A road segment's collision-history-derived safety rating. NEUTRAL means
+/// no STATS19 collision has ever snapped to this segment in the imported
+/// window, not that the road is verified safe.
+enum RoadSafetyRating {
+  NEUTRAL
+  AMBER
+  DARK_AMBER
+  RED
+}
+
 // Core STATS19 entities
 
 /// One police-reported personal-injury road collision.
@@ -81,6 +91,12 @@ model Collision {
 
   lsoaCode String? @map("lsoa_code")
 
+  /// Nearest OSM road segment within the snapping distance threshold, null
+  /// if none was found (e.g. off-road location, or geometry not yet
+  /// imported for that area). Set by a separate snapping pass, not by the
+  /// STATS19 importer itself.
+  roadSegmentId String? @map("road_segment_id")
+
   h3Resolution5 String? @map("h3_resolution_5")
   h3Resolution7 String? @map("h3_resolution_7")
   h3Resolution9 String? @map("h3_resolution_9")
@@ -93,6 +109,7 @@ model Collision {
 
   vehicles  Vehicle[]
   casualties Casualty[]
+  roadSegment RoadSegment? @relation(fields: [roadSegmentId], references: [id])
 
   @@index([accidentYear])
   @@index([date])
@@ -106,6 +123,7 @@ model Collision {
   @@index([sourceStatus])
   @@index([speedLimit])
   @@index([urbanRuralCode])
+  @@index([roadSegmentId])
   @@map("collisions")
 }
 
@@ -185,6 +203,38 @@ model Casualty {
   @@index([casualtySeverityCode])
   @@index([ageBandOfCasualtyCode])
   @@map("casualties")
+}
+
+/// One OpenStreetMap road way, carrying its own collision history and a
+/// derived safety rating. Geometry comes from a Geofabrik Great Britain
+/// extract (see docs/road-safety-ratings.md), never STATS19 itself, which
+/// only ever records a road number/class per collision, not road shape.
+model RoadSegment {
+  id        String @id @default(uuid())
+  osmWayId  BigInt @unique @map("osm_way_id")
+  name      String?
+  /// OSM `highway` tag value, e.g. "motorway", "primary", "residential".
+  roadClass String? @map("road_class")
+
+  /// GEOMETRY(LineString, 4326). Unsupported by Prisma Client's typed
+  /// queries, read/written only via $queryRaw/$executeRaw (see
+  /// lib/api/road-segments.ts and the ingestor's road_network module).
+  geometry Unsupported("GEOMETRY(LineString, 4326)")
+
+  collisionCount Int @default(0) @map("collision_count")
+  fatalCount     Int @default(0) @map("fatal_count")
+  seriousCount   Int @default(0) @map("serious_count")
+  slightCount    Int @default(0) @map("slight_count")
+
+  safetyRating RoadSafetyRating @default(NEUTRAL) @map("safety_rating")
+
+  calculatedAt DateTime @default(now()) @map("calculated_at")
+
+  collisions Collision[]
+
+  @@index([safetyRating])
+  @@index([osmWayId])
+  @@map("road_segments")
 }
 
 // Reference / code-list data
