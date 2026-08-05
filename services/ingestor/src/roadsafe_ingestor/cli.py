@@ -19,6 +19,7 @@ from roadsafe_ingestor.aggregates import annual_metrics, h3_metrics
 from roadsafe_ingestor.http_client import build_client
 from roadsafe_ingestor.importers import code_lists as code_lists_importer
 from roadsafe_ingestor.importers import local_authorities as local_authorities_importer
+from roadsafe_ingestor.importers import road_network as road_network_importer
 from roadsafe_ingestor.importers.casualties import import_casualties
 from roadsafe_ingestor.importers.collisions import import_collisions
 from roadsafe_ingestor.importers.vehicles import import_vehicles
@@ -93,6 +94,16 @@ def import_local_authorities_cmd() -> None:
     settings = get_settings()
     with db.connect(settings.ingest_database_url.get_secret_value()) as conn:
         local_authorities_importer.import_local_authorities(conn, settings)
+
+
+@app.command(name="import-road-network")
+def import_road_network_cmd(pbf_path: Path) -> None:
+    """Load an OpenStreetMap .osm.pbf extract's vehicle-carrying roads into road_segments."""
+    configure_logging()
+    settings = get_settings()
+    with db.connect(settings.ingest_database_url.get_secret_value()) as conn:
+        inserted, rejected = road_network_importer.import_road_network(conn, pbf_path)
+    typer.echo(f"inserted={inserted} rejected={rejected}")
 
 
 @app.command(name="import-collisions")

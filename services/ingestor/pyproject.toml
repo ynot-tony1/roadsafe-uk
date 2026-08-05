@@ -16,6 +16,7 @@ dependencies = [
   "h3==4.1.2",
   "shapely==2.0.6",
   "pyproj==3.7.0",
+  "osmium>=4.3.1",
 ]
 
 [project.scripts]
