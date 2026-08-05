@@ -96,9 +96,12 @@ class CollisionRow(BaseModel):
         except ValueError as exc:
             raise RowRejectedError(collision_index, str(exc)) from exc
 
-        local_authority_district_code = (row.get("local_authority_district") or "").strip()
+        # local_authority_district was replaced by local_authority_ons_district
+        # (the real ONS GSS code) at some point; the old column is still
+        # present in the CSV but is always -1 now.
+        local_authority_district_code = (row.get("local_authority_ons_district") or "").strip()
         if not local_authority_district_code:
-            raise RowRejectedError(collision_index, "missing local_authority_district")
+            raise RowRejectedError(collision_index, "missing local_authority_ons_district")
 
         easting = parsing.parse_nullable_int(row.get("location_easting_osgr"))
         northing = parsing.parse_nullable_int(row.get("location_northing_osgr"))

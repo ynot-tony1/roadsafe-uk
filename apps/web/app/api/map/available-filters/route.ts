@@ -2,19 +2,22 @@ import { prisma } from "@roadsafe-uk/database";
 import { CASUALTY_TYPE_GROUPS, SEVERITY_LABELS } from "@roadsafe-uk/shared";
 import { NextResponse } from "next/server";
 
+// Must match code_definitions.field_name as seeded by
+// config/stats19-code-lists/code-lists.json: raw STATS19 names, no
+// `_code` suffix (unlike the collisions table's own column names).
 const CODE_LIST_FIELDS = [
-  "weather_conditions_code",
-  "light_conditions_code",
-  "road_surface_conditions_code",
-  "junction_detail_code",
-  "junction_control_code",
-  "road_type_code",
-  "first_road_class_code",
-  "second_road_class_code",
-  "special_conditions_at_site_code",
-  "carriageway_hazards_code",
-  "urban_rural_code",
-  "vehicle_type_code",
+  "weather_conditions",
+  "light_conditions",
+  "road_surface_conditions",
+  "junction_detail",
+  "junction_control",
+  "road_type",
+  "first_road_class",
+  "second_road_class",
+  "special_conditions_at_site",
+  "carriageway_hazards",
+  "urban_or_rural_area",
+  "vehicle_type",
 ];
 
 export async function GET() {
