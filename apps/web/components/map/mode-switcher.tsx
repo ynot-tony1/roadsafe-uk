@@ -14,6 +14,7 @@ const MODE_LABELS: Record<string, string> = {
   CYCLIST: "Cyclist",
   MOTORCYCLIST: "Motorcyclist",
   YOUNG_DRIVER: "Young driver",
+  ROAD_SAFETY: "Road safety",
 };
 
 export function ModeSwitcher({

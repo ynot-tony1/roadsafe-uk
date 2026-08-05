@@ -10,11 +10,17 @@ import { FilterPanel } from "@/components/map/filter-panel";
 import { LegendPanel } from "@/components/map/legend-panel";
 import { ModeSwitcher } from "@/components/map/mode-switcher";
 import { ResultsTable } from "@/components/map/results-table";
-import { buildClusterLayer, buildH3Layer, buildHeatmapLayer, buildPointsLayer } from "@/lib/map/build-layers";
+import {
+  buildClusterLayer,
+  buildH3Layer,
+  buildHeatmapLayer,
+  buildPointsLayer,
+  buildRoadsLayer,
+} from "@/lib/map/build-layers";
 import { buildMapQueryParams } from "@/lib/map/build-query";
-import { fetchClusters, fetchCollisions, fetchH3 } from "@/lib/map/fetch-map-data";
+import { fetchClusters, fetchCollisions, fetchH3, fetchRoads } from "@/lib/map/fetch-map-data";
 import { useMapUrlState } from "@/lib/map/use-map-url-state";
-import type { ClusterPoint, CollisionPoint, H3Cell, MapBounds } from "@/lib/map/types";
+import type { ClusterPoint, CollisionPoint, H3Cell, MapBounds, RoadSegmentGeo } from "@/lib/map/types";
 
 import "maplibre-gl/dist/maplibre-gl.css";
 
@@ -40,7 +46,8 @@ export function MapView({ config }: { config: MapViewConfig }) {
   const [h3Cells, setH3Cells] = useState<H3Cell[]>([]);
   const [clusters, setClusters] = useState<ClusterPoint[]>([]);
   const [points, setPoints] = useState<CollisionPoint[]>([]);
-  const [dataSource, setDataSource] = useState<"h3" | "clusters" | "points">("h3");
+  const [roads, setRoads] = useState<RoadSegmentGeo[]>([]);
+  const [dataSource, setDataSource] = useState<"h3" | "clusters" | "points" | "roads">("h3");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedCollisionIndex, setSelectedCollisionIndex] = useState<string | null>(null);
@@ -58,7 +65,11 @@ export function MapView({ config }: { config: MapViewConfig }) {
         const strategy = resolveZoomStrategy(nextZoom);
         const params = buildMapQueryParams(nextBounds, filters, mode);
 
-        if (mode === "INDIVIDUAL_COLLISIONS" || strategy.mode === "points") {
+        if (mode === "ROAD_SAFETY") {
+          const response = await fetchRoads(params, nextZoom, controller.signal);
+          setDataSource("roads");
+          setRoads(response.roads);
+        } else if (mode === "INDIVIDUAL_COLLISIONS" || strategy.mode === "points") {
           const bboxArea = (nextBounds.maxLat - nextBounds.minLat) * (nextBounds.maxLng - nextBounds.minLng);
           if (bboxArea > MAP_QUERY_LIMITS.DEFAULT_MAX_BOUNDING_BOX_AREA_DEG2) {
             setDataSource("points");
@@ -155,6 +166,9 @@ export function MapView({ config }: { config: MapViewConfig }) {
   }, []);
 
   const layers = useMemo(() => {
+    if (dataSource === "roads") {
+      return [buildRoadsLayer(roads, () => {})];
+    }
     if (dataSource === "points") {
       return [buildPointsLayer(points, setSelectedCollisionIndex)];
     }
@@ -163,7 +177,7 @@ export function MapView({ config }: { config: MapViewConfig }) {
       return [buildClusterLayer(clusters, () => {})];
     }
     return [buildH3Layer(mode, h3Cells, () => {})];
-  }, [dataSource, mode, h3Cells, clusters, points]);
+  }, [dataSource, mode, h3Cells, clusters, points, roads]);
 
   return (
     <div className="flex flex-col gap-3">
@@ -217,7 +231,9 @@ export function MapView({ config }: { config: MapViewConfig }) {
         </div>
       </div>
 
-      {dataSource === "points" ? (
+      {dataSource === "roads" ? (
+        <ResultsTable kind="roads" rows={roads} />
+      ) : dataSource === "points" ? (
         <ResultsTable kind="points" rows={points} onSelect={setSelectedCollisionIndex} />
       ) : dataSource === "clusters" ? (
         <ResultsTable kind="clusters" rows={clusters} />

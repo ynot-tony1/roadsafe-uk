@@ -5,6 +5,7 @@ import type {
   CollisionsResponse,
   H3Response,
   LegendResponse,
+  RoadsResponse,
 } from "@/lib/map/types";
 
 async function fetchJson<T>(url: string, signal?: AbortSignal): Promise<T> {
@@ -43,6 +44,16 @@ export async function fetchCollisions(
   signal?: AbortSignal,
 ): Promise<CollisionsResponse> {
   return fetchJson<CollisionsResponse>(`/api/map/collisions?${params.toString()}`, signal);
+}
+
+export async function fetchRoads(
+  params: URLSearchParams,
+  zoom: number,
+  signal?: AbortSignal,
+): Promise<RoadsResponse> {
+  const withZoom = new URLSearchParams(params);
+  withZoom.set("zoom", String(zoom));
+  return fetchJson<RoadsResponse>(`/api/map/roads?${withZoom.toString()}`, signal);
 }
 
 export async function fetchCollisionDetail(collisionIndex: string): Promise<CollisionDetail> {

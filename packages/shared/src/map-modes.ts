@@ -9,6 +9,7 @@ export const MAP_MODES = [
   'CYCLIST',
   'MOTORCYCLIST',
   'YOUNG_DRIVER',
+  'ROAD_SAFETY',
 ] as const;
 
 export type MapMode = (typeof MAP_MODES)[number];

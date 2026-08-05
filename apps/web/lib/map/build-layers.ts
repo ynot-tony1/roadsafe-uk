@@ -1,10 +1,32 @@
 import { HeatmapLayer } from "@deck.gl/aggregation-layers";
 import { H3HexagonLayer } from "@deck.gl/geo-layers";
-import { ScatterplotLayer } from "@deck.gl/layers";
-import { SEVERITY_COLORS } from "@roadsafe-uk/shared";
+import { PathLayer, ScatterplotLayer } from "@deck.gl/layers";
+import { ROAD_SAFETY_RATING_COLORS, SEVERITY_COLORS } from "@roadsafe-uk/shared";
 
 import { hexToRgb, withAlpha, type RgbColor } from "@/lib/map/colors";
-import type { ClusterPoint, CollisionPoint, H3Cell } from "@/lib/map/types";
+import type { ClusterPoint, CollisionPoint, H3Cell, RoadSegmentGeo } from "@/lib/map/types";
+
+const ROAD_SAFETY_RATING_RGB: Record<string, [number, number, number]> = {
+  NEUTRAL: hexToRgb(ROAD_SAFETY_RATING_COLORS.NEUTRAL),
+  AMBER: hexToRgb(ROAD_SAFETY_RATING_COLORS.AMBER),
+  DARK_AMBER: hexToRgb(ROAD_SAFETY_RATING_COLORS.DARK_AMBER),
+  RED: hexToRgb(ROAD_SAFETY_RATING_COLORS.RED),
+};
+
+// Rated roads drawn on top of unrated ones, and thicker, so a red road
+// through a cluster of neutral streets is never hidden underneath them.
+const ROAD_SAFETY_RATING_ORDER: Record<string, number> = {
+  NEUTRAL: 0,
+  AMBER: 1,
+  DARK_AMBER: 2,
+  RED: 3,
+};
+const ROAD_SAFETY_RATING_WIDTH: Record<string, number> = {
+  NEUTRAL: 1,
+  AMBER: 2,
+  DARK_AMBER: 3,
+  RED: 4,
+};
 
 const MODE_ACCENT_COLOR: Record<string, RgbColor> = {
   PEDESTRIAN: [37, 99, 235],
@@ -114,5 +136,29 @@ export function buildPointsLayer(
     lineWidthMinPixels: 1,
     pickable: true,
     onClick: (info) => info.object && onClick((info.object as CollisionPoint).collisionIndex),
+  });
+}
+
+export function buildRoadsLayer(
+  roads: RoadSegmentGeo[],
+  onHover: (road: RoadSegmentGeo | null) => void,
+) {
+  // Draw NEUTRAL/AMBER first, RED last, so severe roads render on top of
+  // the quieter ones they might otherwise be hidden behind.
+  const sorted = [...roads].sort(
+    (a, b) => ROAD_SAFETY_RATING_ORDER[a.safetyRating] - ROAD_SAFETY_RATING_ORDER[b.safetyRating],
+  );
+  return new PathLayer<RoadSegmentGeo>({
+    id: "roads",
+    data: sorted,
+    getPath: (d) => d.geometry.coordinates,
+    getColor: (d) => withAlpha(ROAD_SAFETY_RATING_RGB[d.safetyRating] ?? ROAD_SAFETY_RATING_RGB.NEUTRAL, 230),
+    getWidth: (d) => ROAD_SAFETY_RATING_WIDTH[d.safetyRating] ?? 1,
+    widthUnits: "pixels",
+    widthMinPixels: 1,
+    capRounded: true,
+    jointRounded: true,
+    pickable: true,
+    onHover: (info) => onHover((info.object as RoadSegmentGeo | undefined) ?? null),
   });
 }

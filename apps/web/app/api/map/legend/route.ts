@@ -1,4 +1,12 @@
-import { MAP_MODES, SEVERITY_COLORS, SEVERITY_LABELS, type MapMode } from "@roadsafe-uk/shared";
+import {
+  MAP_MODES,
+  ROAD_SAFETY_RATINGS,
+  ROAD_SAFETY_RATING_COLORS,
+  ROAD_SAFETY_RATING_LABELS,
+  SEVERITY_COLORS,
+  SEVERITY_LABELS,
+  type MapMode,
+} from "@roadsafe-uk/shared";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { jsonError } from "@/lib/api/response";
@@ -56,6 +64,14 @@ const LEGEND_BY_MODE: Record<MapMode, { title: string; items: LegendItem[] }> = 
         color: "#0891b2",
       },
     ],
+  },
+  ROAD_SAFETY: {
+    title: "Road safety rating",
+    items: ROAD_SAFETY_RATINGS.map((rating) => ({
+      code: rating,
+      label: ROAD_SAFETY_RATING_LABELS[rating],
+      color: ROAD_SAFETY_RATING_COLORS[rating],
+    })),
   },
 };
 

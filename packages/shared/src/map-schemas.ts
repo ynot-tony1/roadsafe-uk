@@ -94,6 +94,11 @@ export const H3QuerySchema = z.object({
 
 export const ClusterQuerySchema = H3QuerySchema;
 
+export const RoadsQuerySchema = z.object({
+  bbox: BoundingBoxSchema,
+  zoom: z.coerce.number().min(0).max(22),
+});
+
 export const CollisionsQuerySchema = z.object({
   bbox: BoundingBoxSchema,
   filters: MapFiltersSchema.default({}),

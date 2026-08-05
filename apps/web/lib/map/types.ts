@@ -45,6 +45,22 @@ export interface CollisionsResponse {
   nextCursor: string | null;
 }
 
+export interface RoadSegmentGeo {
+  id: string;
+  name: string | null;
+  roadClass: string | null;
+  safetyRating: "NEUTRAL" | "AMBER" | "DARK_AMBER" | "RED";
+  collisionCount: number;
+  fatalCount: number;
+  seriousCount: number;
+  slightCount: number;
+  geometry: { type: "LineString"; coordinates: [number, number][] };
+}
+
+export interface RoadsResponse {
+  roads: RoadSegmentGeo[];
+}
+
 export interface LegendItem {
   code: string;
   label: string;

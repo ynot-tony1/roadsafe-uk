@@ -1,4 +1,4 @@
-import { SEVERITY_LABELS } from "@roadsafe-uk/shared";
+import { ROAD_SAFETY_RATING_LABELS, SEVERITY_LABELS } from "@roadsafe-uk/shared";
 
 import {
   Table,
@@ -9,12 +9,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatCount } from "@/lib/format";
-import type { ClusterPoint, CollisionPoint, H3Cell } from "@/lib/map/types";
+import type { ClusterPoint, CollisionPoint, H3Cell, RoadSegmentGeo } from "@/lib/map/types";
 
 type ResultsTableProps =
   | { kind: "h3"; rows: H3Cell[] }
   | { kind: "clusters"; rows: ClusterPoint[] }
-  | { kind: "points"; rows: CollisionPoint[]; onSelect: (collisionIndex: string) => void };
+  | { kind: "points"; rows: CollisionPoint[]; onSelect: (collisionIndex: string) => void }
+  | { kind: "roads"; rows: RoadSegmentGeo[] };
 
 export function ResultsTable(props: ResultsTableProps) {
   return (
@@ -49,6 +50,39 @@ export function ResultsTable(props: ResultsTableProps) {
                     <TableCell className="text-right">{formatCount(row.fatalCount)}</TableCell>
                     <TableCell className="text-right">{formatCount(row.seriousCount)}</TableCell>
                     <TableCell className="text-right">{formatCount(row.slightCount)}</TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </>
+        ) : props.kind === "roads" ? (
+          <>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Road</TableHead>
+                <TableHead>Class</TableHead>
+                <TableHead>Rating</TableHead>
+                <TableHead className="text-right">Collisions</TableHead>
+                <TableHead className="text-right">Fatal</TableHead>
+                <TableHead className="text-right">Serious</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {props.rows.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center text-muted-foreground">
+                    No rated roads in the current view
+                  </TableCell>
+                </TableRow>
+              ) : (
+                props.rows.map((row) => (
+                  <TableRow key={row.id}>
+                    <TableCell>{row.name ?? "Unnamed road"}</TableCell>
+                    <TableCell className="text-muted-foreground">{row.roadClass}</TableCell>
+                    <TableCell>{ROAD_SAFETY_RATING_LABELS[row.safetyRating]}</TableCell>
+                    <TableCell className="text-right">{formatCount(row.collisionCount)}</TableCell>
+                    <TableCell className="text-right">{formatCount(row.fatalCount)}</TableCell>
+                    <TableCell className="text-right">{formatCount(row.seriousCount)}</TableCell>
                   </TableRow>
                 ))
               )}
