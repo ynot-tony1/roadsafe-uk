@@ -27,9 +27,12 @@ jobs:
     # A run has twice hung for 50+ minutes on a database connection that
     # looked alive at the TCP level but was not actually making progress
     # (see db.py's statement_timeout for the underlying fix). This bounds
-    # the damage if some other, not yet seen, hang mode shows up: every
-    # observed successful run has finished in under 45 minutes.
-    timeout-minutes: 60
+    # the damage if some other, not yet seen, hang mode shows up. 60 was
+    # too tight though: a large single year (2025, ~184k vehicles + ~127k
+    # casualties) was cancelled by it while still visibly making progress
+    # (confirmed via SHOW CLUSTER QUERIES) on the free-tier cluster, not
+    # actually hung, retry backoff on a busy cluster genuinely eats time.
+    timeout-minutes: 120
     defaults:
       run:
         working-directory: services/ingestor
