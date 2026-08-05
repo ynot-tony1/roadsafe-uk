@@ -1,18 +1,17 @@
 # RoadSafe UK, build status
 
 Last updated: 2026-08-05. The full five-year STATS19 import (2021-2025) is
-complete and verified. Not yet redeployed to Vercel with the fresh data,
-that's the next step.
+complete and verified, and the app is live in production against it.
 
 ## Where the code lives
 
 Pushed to GitHub: `https://github.com/ynot-tony1/roadsafe-uk` (public, main
-branch). Deployed to Vercel: project `roadsafe-uk` under the `tony-f5c4`
-team, preview URL `https://roadsafe-kkzewjwfr-tony-f5c4.vercel.app`
-(protected by Vercel's deployment protection SSO wall, use `vercel curl`
-to check it, not plain `curl`). No production deploy yet, that's still
-pending a redeploy against the now-complete dataset (see "Exact next
-steps").
+branch). **Live in production**: `https://roadsafe-uk.vercel.app` (project
+`roadsafe-uk` under the `tony-f5c4` team), deployed from commit `6826330`,
+verified via `vercel curl` (not plain `curl`, deployment protection's SSO
+wall blocks that) that `/`, `/status`, and `/api/map/available-filters`
+all return 200 with the complete five-year dataset, and `vercel logs
+--since 5m` showed no errors immediately after promotion.
 
 CockroachDB Cloud: cluster `silent-jindo`, database `road_safety`, live,
 all five years (2021-2025) imported and verified. `SELECT source_year,
@@ -309,18 +308,21 @@ five have H3 and annual aggregates built (`h3_metrics` has exactly 5
 distinct `source_import_id`s, one per year), and
 `local_authority_district_code` now holds real ONS codes.
 
+Redeployed to preview (`vercel deploy`), spot-checked
+`/api/map/available-filters` (both `codeLists` and the 350-entry
+`localAuthorities` array are populated), `/`, `/status`,
+`/hotspots`, `/road-users`, and `/map` (all 200), then promoted with
+`vercel deploy --prod`, aliased to `https://roadsafe-uk.vercel.app`.
+
 ## Exact next steps, in order
 
-1. Redeploy to Vercel (`vercel deploy` from the repo root) so the ISR
-   pages (`/`, `/hotspots`, `/local-authorities`, `/road-users`)
-   prerender against the now-complete, now-correct five-year dataset
-   instead of their last snapshot.
-2. Spot-check `/api/map/available-filters` on the fresh preview: confirm
-   `codeLists` entries are now populated and `localAuthorities` has
-   350 entries.
-3. `vercel deploy --prod` once the above is confirmed working on a
-   fresh preview, then walk the full spec section 23 acceptance
-   checklist against the live production system.
+1. Walk the full spec section 23 acceptance checklist against the live
+   production system, this has not been done yet, everything above is
+   route-level smoke-checking, not a systematic pass against the
+   original spec's acceptance criteria.
+2. Decide whether the 20-unmapped-local-authority-code gap (see above)
+   is worth closing, and if so, source the pre-2023 English district
+   names properly rather than from memory.
 
 ## How to resume
 
