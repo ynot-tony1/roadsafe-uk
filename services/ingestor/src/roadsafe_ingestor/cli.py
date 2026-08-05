@@ -25,6 +25,11 @@ from roadsafe_ingestor.importers.collisions import import_collisions
 from roadsafe_ingestor.importers.vehicles import import_vehicles
 from roadsafe_ingestor.ingestion_run import complete_run, start_run
 from roadsafe_ingestor.logging_config import configure_logging, get_logger, log_extra
+from roadsafe_ingestor.road_snapping import (
+    DEFAULT_SNAP_DISTANCE_METERS,
+    compute_road_safety_ratings,
+    snap_collisions_to_roads,
+)
 from roadsafe_ingestor.settings import get_settings
 
 # pretty_exceptions_show_locals defaults to True, which prints every local
@@ -104,6 +109,31 @@ def import_road_network_cmd(pbf_path: Path) -> None:
     with db.connect(settings.ingest_database_url.get_secret_value()) as conn:
         inserted, rejected = road_network_importer.import_road_network(conn, pbf_path)
     typer.echo(f"inserted={inserted} rejected={rejected}")
+
+
+@app.command(name="snap-roads")
+def snap_roads_cmd(
+    min_lat: Annotated[float | None, typer.Option()] = None,
+    max_lat: Annotated[float | None, typer.Option()] = None,
+    min_lng: Annotated[float | None, typer.Option()] = None,
+    max_lng: Annotated[float | None, typer.Option()] = None,
+    distance_meters: Annotated[float, typer.Option()] = DEFAULT_SNAP_DISTANCE_METERS,
+) -> None:
+    """Snap unmatched collisions (optionally within a bbox) to their nearest
+    road segment, then recompute every road segment's safety rating."""
+    configure_logging()
+    settings = get_settings()
+    with db.connect(settings.ingest_database_url.get_secret_value()) as conn:
+        matched = snap_collisions_to_roads(
+            conn,
+            min_lat=min_lat,
+            max_lat=max_lat,
+            min_lng=min_lng,
+            max_lng=max_lng,
+            distance_meters=distance_meters,
+        )
+        updated = compute_road_safety_ratings(conn)
+    typer.echo(f"matched={matched} segments_rated={updated}")
 
 
 @app.command(name="import-collisions")
