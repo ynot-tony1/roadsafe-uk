@@ -82,14 +82,10 @@ class _RoadWayHandler(osmium.SimpleHandler):
             # become a LineString. Rare, and not worth aborting the whole
             # import over.
             self.ways_rejected += 1
-            log_extra(
-                logger, 30, "road way rejected", osm_way_id=w.id, reason=str(exc)
-            )
+            log_extra(logger, 30, "road way rejected", osm_way_id=w.id, reason=str(exc))
             return
 
-        self._batch.append(
-            (str(uuid.uuid4()), w.id, w.tags.get("name"), highway, wkb_hex)
-        )
+        self._batch.append((str(uuid.uuid4()), w.id, w.tags.get("name"), highway, wkb_hex))
         if len(self._batch) >= BATCH_SIZE:
             self._flush()
 
