@@ -52,6 +52,9 @@ def snap_collisions_to_roads(
     bbox_clause = ""
     params: list[float] = []
     if min_lat is not None:
+        assert (
+            max_lat is not None and min_lng is not None and max_lng is not None
+        ), "min_lat, max_lat, min_lng, max_lng must all be given together, or not at all"
         bbox_clause = "AND c2.longitude BETWEEN %s AND %s AND c2.latitude BETWEEN %s AND %s"
         params = [min_lng, max_lng, min_lat, max_lat]
 
