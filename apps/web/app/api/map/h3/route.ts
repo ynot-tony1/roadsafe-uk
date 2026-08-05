@@ -14,10 +14,15 @@ const H3_COLUMN_BY_RESOLUTION = {
 
 interface H3AggregateRow {
   h3_index: string;
-  collision_count: number;
-  fatal_count: number;
-  serious_count: number;
-  slight_count: number;
+  // CockroachDB's count(*) comes back as a JS BigInt through Prisma's raw
+  // query path regardless of an explicit ::int cast in the SQL, and
+  // NextResponse.json (JSON.stringify) cannot serialize BigInt, so these
+  // are converted with Number() below rather than trusted as already
+  // being plain numbers.
+  collision_count: bigint;
+  fatal_count: bigint;
+  serious_count: bigint;
+  slight_count: bigint;
 }
 
 export async function GET(request: NextRequest) {
@@ -62,10 +67,10 @@ export async function GET(request: NextRequest) {
     h3Resolution: strategy.h3Resolution,
     cells: rows.map((row) => ({
       h3Index: row.h3_index,
-      collisionCount: row.collision_count,
-      fatalCount: row.fatal_count,
-      seriousCount: row.serious_count,
-      slightCount: row.slight_count,
+      collisionCount: Number(row.collision_count),
+      fatalCount: Number(row.fatal_count),
+      seriousCount: Number(row.serious_count),
+      slightCount: Number(row.slight_count),
     })),
   });
 }
