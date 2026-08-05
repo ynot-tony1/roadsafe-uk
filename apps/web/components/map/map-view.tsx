@@ -125,6 +125,20 @@ export function MapView({ config }: { config: MapViewConfig }) {
     handleMoveEnd();
   }, [handleMoveEnd]);
 
+  // DeckGL's own controller (enabled via `controller` below) is what
+  // actually receives mouse/touch/keyboard input, not the nested <Map>'s
+  // native handlers, so panning or zooming with the mouse never fired the
+  // underlying MapLibre `moveend` event `onMoveEnd` below listens for, the
+  // data layer silently never refetched past the very first load no matter
+  // how far the user panned or zoomed. onViewStateChange is deck.gl's own
+  // guaranteed callback for exactly that interaction path. onMoveEnd is
+  // kept too, since it's still what fires for the NavigationControl
+  // zoom buttons, which call the native map directly and bypass deck.gl's
+  // controller entirely.
+  const handleViewStateChange = useCallback(() => {
+    handleMoveEnd();
+  }, [handleMoveEnd]);
+
   useEffect(() => {
     if (bounds) {
       debouncedLoad(bounds, zoom);
@@ -173,6 +187,7 @@ export function MapView({ config }: { config: MapViewConfig }) {
           }}
           controller
           layers={layers}
+          onViewStateChange={handleViewStateChange}
         >
           <Map
             ref={mapRef}

@@ -17,7 +17,14 @@ const FATAL_RGB = hexToRgb(SEVERITY_COLORS[1]);
 const SERIOUS_RGB = hexToRgb(SEVERITY_COLORS[2]);
 const SLIGHT_RGB = hexToRgb(SEVERITY_COLORS[3]);
 
-function severityMixColor(cell: H3Cell): [number, number, number, number] {
+interface SeverityCounts {
+  collisionCount: number;
+  fatalCount: number;
+  seriousCount: number;
+  slightCount: number;
+}
+
+function severityMixColor(cell: SeverityCounts): [number, number, number, number] {
   const total = cell.collisionCount || 1;
   const weights = [cell.fatalCount / total, cell.seriousCount / total, cell.slightCount / total];
   const channels = [0, 1, 2].map((i) =>
@@ -76,7 +83,12 @@ export function buildClusterLayer(
     getRadius: (d) => Math.sqrt(d.collisionCount) * 150,
     radiusMinPixels: 4,
     radiusMaxPixels: 60,
-    getFillColor: [37, 99, 235, 170],
+    // Was a flat blue regardless of severity mix, contradicting this
+    // mode's own legend ("Collision severity": fatal/serious/slight),
+    // every dot looked identical no matter how severe its collisions
+    // were. Reuses the same red/orange/yellow blend the H3 hexagon
+    // layer uses so the two modes are visually consistent.
+    getFillColor: (d) => severityMixColor(d),
     stroked: true,
     getLineColor: [255, 255, 255, 200],
     lineWidthMinPixels: 1,
