@@ -25,6 +25,9 @@ class Settings(BaseSettings):
 
     source_config_path: Path = Field(default=CONFIG_DIR / "source-config.yml")
     code_lists_path: Path = Field(default=CONFIG_DIR / "stats19-code-lists" / "code-lists.json")
+    local_authorities_path: Path = Field(
+        default=CONFIG_DIR / "local-authorities" / "local-authorities.json"
+    )
     map_layers_path: Path = Field(default=CONFIG_DIR / "map-layers.yml")
 
 

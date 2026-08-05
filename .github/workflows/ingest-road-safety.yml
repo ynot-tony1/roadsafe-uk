@@ -68,6 +68,9 @@ jobs:
       - name: Import code lists
         run: uv run ingestor import-code-lists
 
+      - name: Import local authority reference data
+        run: uv run ingestor import-local-authorities
+
       # download only ever produces the DfT's rolling "last 5 years" bulk
       # files (see docs/troubleshooting.md), never a single year on its
       # own, so every dataset kind is filtered down to the requested year
