@@ -42,52 +42,60 @@ DEFAULT_BATCH_SIZE = 2000
 BROAD_PHASE_DEGREES = 0.0008
 
 
-@retry_on_serialization_conflict
-def _snap_one_batch(
+def _select_candidate_batch(
     conn: Connection,
     *,
     bbox_clause: str,
     bbox_params: list[float],
-    distance_meters: float,
+    after_cursor: str,
     batch_size: int,
-) -> int:
-    # The `batch` CTE picks a small, bounded set of candidate collisions
-    # *before* the spatial join ever runs. Without it, CockroachDB has to
-    # fully materialise the join (and the DISTINCT ON's sort) across every
-    # matching collision in scope before the outer LIMIT can apply, since
-    # DISTINCT ON's semantics need to see every candidate row to pick the
-    # true nearest per group. In a dense area (central London) that alone
-    # was enough to exceed connect()'s statement_timeout even at a batch
-    # size of 20, EXPLAIN showed a multi-billion-row estimated sort; the
-    # exact same query structure against Cumbria (far lower road and
-    # collision density) had run in seconds, which is what made this only
-    # show up once the full country's road network was loaded, not during
-    # the original prototype. Pre-limiting the candidate set first keeps
-    # every batch's real cost bounded by batch_size, not by how dense the
-    # surrounding area happens to be.
+) -> list[str]:
+    """Picks the next batch_size collisions (by collision_index order,
+    resuming after after_cursor) that still need snapping. Cheap: a plain
+    index-friendly scan/sort, no spatial join here at all."""
     sql = f"""
-    WITH batch AS (
-        SELECT collision_index, longitude, latitude
-        FROM collisions
-        WHERE road_segment_id IS NULL AND longitude IS NOT NULL AND latitude IS NOT NULL
-          {bbox_clause}
-        ORDER BY collision_index
-        LIMIT %s
-    )
+    SELECT collision_index FROM collisions
+    WHERE road_segment_id IS NULL AND longitude IS NOT NULL AND latitude IS NOT NULL
+      AND collision_index > %s
+      {bbox_clause}
+    ORDER BY collision_index
+    LIMIT %s
+    """
+    with conn.cursor() as cur:
+        cur.execute(sql, [after_cursor, *bbox_params, batch_size])
+        return [row[0] for row in cur.fetchall()]
+
+
+@retry_on_serialization_conflict
+def _snap_candidate_ids(
+    conn: Connection, *, collision_ids: list[str], distance_meters: float
+) -> int:
+    # Bounding the spatial join to an explicit, small, known set of
+    # collision_index values (rather than letting CockroachDB discover the
+    # candidate set itself) is what keeps this fast regardless of local
+    # road/collision density. A version of this query that instead let the
+    # planner pick the candidate set via ORDER BY + LIMIT inside the same
+    # statement worked fine in Cumbria's road/collision density but showed
+    # a multi-billion-row estimated sort in central London (EXPLAIN),
+    # timing out even at a batch size of 20, because DISTINCT ON's
+    # semantics forced CockroachDB to fully materialise the join across
+    # every matching collision in scope before any LIMIT could apply.
+    sql = """
     UPDATE collisions c
     SET road_segment_id = nearest.rs_id
     FROM (
         SELECT DISTINCT ON (b.collision_index)
             b.collision_index,
             rs.id AS rs_id
-        FROM batch b
+        FROM collisions b
         JOIN road_segments rs
             ON ST_DWithin(
                 rs.geometry,
                 ST_SetSRID(ST_MakePoint(b.longitude, b.latitude), 4326),
                 %s
             )
-        WHERE ST_Distance(
+        WHERE b.collision_index = ANY(%s)
+          AND ST_Distance(
                 rs.geometry::GEOGRAPHY,
                 ST_SetSRID(ST_MakePoint(b.longitude, b.latitude), 4326)::GEOGRAPHY
               ) <= %s
@@ -100,7 +108,7 @@ def _snap_one_batch(
     WHERE c.collision_index = nearest.collision_index
     """
     with conn.cursor() as cur:
-        cur.execute(sql, [*bbox_params, batch_size, BROAD_PHASE_DEGREES, distance_meters])
+        cur.execute(sql, [BROAD_PHASE_DEGREES, collision_ids, distance_meters])
         matched = cur.rowcount
     conn.commit()
     return matched
@@ -123,15 +131,17 @@ def snap_collisions_to_roads(
     after importing more road network coverage picks up newly-matchable
     collisions without re-processing already-matched ones.
 
-    Processes batch_size collisions per statement rather than the whole
-    match set in one UPDATE: a single unbounded UPDATE across the whole of
-    Great Britain's ~513k collisions and 5.2 million road segments hit
-    connect()'s statement_timeout in production. Loops until a batch
-    matches nothing further, that's the real termination condition, not a
-    fixed number of iterations, since some collisions in the WHERE clause
-    legitimately never match (no road within distance_meters) and would
-    otherwise make the loop spin forever re-selecting the same unmatched
-    rows.
+    Paginates by a collision_index cursor, not by "did the last batch match
+    fewer than batch_size collisions": some collisions genuinely never
+    match (no road within distance_meters) and would otherwise stay
+    road_segment_id IS NULL forever, silently starving that termination
+    check into stopping early. An earlier version used exactly that check
+    and stopped after processing under 2,200 of 513,801 collisions in
+    production, having correctly matched everything in its one and only
+    batch, then wrongly concluded there was nothing left to do. The cursor
+    tracks candidates *seen*, not matched, so it always reaches the true
+    end of the table regardless of how many candidates along the way turn
+    out to be unmatchable.
     """
     bbox_clause = ""
     bbox_params: list[float] = []
@@ -139,27 +149,38 @@ def snap_collisions_to_roads(
         assert (
             max_lat is not None and min_lng is not None and max_lng is not None
         ), "min_lat, max_lat, min_lng, max_lng must all be given together, or not at all"
-        bbox_clause = "AND c2.longitude BETWEEN %s AND %s AND c2.latitude BETWEEN %s AND %s"
+        bbox_clause = "AND longitude BETWEEN %s AND %s AND latitude BETWEEN %s AND %s"
         bbox_params = [min_lng, max_lng, min_lat, max_lat]
 
     total_matched = 0
+    total_seen = 0
+    after_cursor = ""
     while True:
-        matched = _snap_one_batch(
+        candidate_ids = _select_candidate_batch(
             conn,
             bbox_clause=bbox_clause,
             bbox_params=bbox_params,
-            distance_meters=distance_meters,
+            after_cursor=after_cursor,
             batch_size=batch_size,
         )
+        if not candidate_ids:
+            break
+        matched = _snap_candidate_ids(
+            conn, collision_ids=candidate_ids, distance_meters=distance_meters
+        )
         total_matched += matched
+        total_seen += len(candidate_ids)
+        after_cursor = candidate_ids[-1]
         log_extra(
             logger,
             20,
             "collisions snapped to road segments (batch)",
+            seen=len(candidate_ids),
             matched=matched,
+            total_seen=total_seen,
             total_matched=total_matched,
         )
-        if matched < batch_size:
+        if len(candidate_ids) < batch_size:
             break
     return total_matched
 
