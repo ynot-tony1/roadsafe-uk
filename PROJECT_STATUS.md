@@ -1,12 +1,23 @@
 # RoadSafe UK, build status
 
-Last updated: 2026-08-05 (evening). The full five-year STATS19 import
-(2021-2025) is complete and verified, the app is live in production
-against it, two real map bugs found after deployment are fixed and
-verified, and a new per-road safety rating feature is built and mid-way
-through a full Great Britain rollout, in progress unattended on GitHub
-Actions right now. See "Per-road safety ratings" below for the current
-state and exactly what's left.
+Last updated: 2026-08-06. The full five-year STATS19 import (2021-2025)
+is complete and verified, two real map bugs found after deployment are
+fixed and verified, and the new per-road safety rating feature is
+**fully complete and live in production**: all of Great Britain's road
+network is imported, 99.7% of collisions are snapped to a road, every
+segment's rating is computed, and the live site is already serving it
+correctly (verified against real data, see "Per-road safety ratings,
+now complete" below). Nothing is running in the background.
+
+One piece of local housekeeping, not a product issue: this machine's
+`vercel` CLI login token expired partway through this session
+(`Error: The specified token is not valid`). It didn't block anything,
+Vercel's GitHub integration auto-deploys every push to `main` to
+production independently of the local CLI, confirmed by querying the
+live site and seeing it already served the finished feature without
+needing a manual `vercel deploy`. Only run `vercel login` again if a
+future change needs the CLI specifically (inspecting deployments,
+managing env vars, etc.).
 
 ## Where the code lives
 
@@ -352,103 +363,102 @@ All three fixed, verified with real Playwright interaction against
 production (zoom/pan triggering real new network requests, cluster dots
 showing varied colours matching the legend), redeployed to production.
 
-## Per-road safety ratings (new feature, in progress)
+## Per-road safety ratings, now complete (2026-08-06)
 
-The user's actual ask, once the above was fixed: rate individual roads by
-safety, not just aggregated area/hexagon/point views. Full design
-rationale, the two separate performance investigations, and the exact
+The user's actual ask, once the map bugs above were fixed: rate
+individual roads by safety, not just aggregated area/hexagon/point
+views. Full design rationale, the performance investigations, and the
 53-region dispatch list are in
 [`docs/road-safety-ratings.md`](docs/road-safety-ratings.md); this is
 the short version.
 
-**Built and deployed to production today:**
+**Built, fully populated for all of Great Britain, and live in
+production:**
 
 - `road_segments` table: OSM road geometry (native CockroachDB
   `GEOMETRY(LineString, 4326)` column with a GIST index, added by hand
   in the migration since Prisma can't express spatial indexes
   declaratively) plus a derived `safety_rating` enum
-  (`NEUTRAL`/`AMBER`/`DARK_AMBER`/`RED`). `collisions.road_segment_id` is
-  a new nullable FK, set by a separate snapping pass, never by the
-  STATS19 importer.
+  (`NEUTRAL`/`AMBER`/`DARK_AMBER`/`RED`). **5,233,954 road segments
+  imported**, spanning Great Britain's full extent (confirmed via
+  `ST_Extent`: lat 49.9-60.8, lng -8.6 to 1.8), real coverage checked
+  directly in London, Glasgow, and Cardiff, not just the Cumbria
+  prototype area.
 - `services/ingestor/.../importers/road_network.py`: loads a Geofabrik
   `.osm.pbf` extract's vehicle-carrying roads (excludes footway/path/
   steps/bridleway/cycleway/pedestrian, STATS19 collisions essentially
-  never touch those). New `ingestor import-road-network <pbf-path>` CLI
-  command.
+  never touch those). Dispatched once per UK sub-region (51 English
+  counties + Scotland + Wales) via
+  `.github/workflows/import-road-network.yml`, all 53 regions
+  successfully imported (an initial burst of 53 simultaneous jobs
+  overloaded the free-tier cluster's connection limit, 14 of the
+  largest/slowest regions failed or were cancelled; redispatching just
+  those 14 once the other 39 had already finished and released their
+  connections cleared it, no code bug).
 - `services/ingestor/.../road_snapping.py`: snaps collisions to their
   nearest road segment within 30m (exact geography-based cutoff, not
   just the broad-phase index pre-filter) and computes each segment's
   rating: RED = any fatal or 10+ collisions, DARK_AMBER = any serious
   injury or 4+ collisions, AMBER = anything else with at least one,
-  NEUTRAL = none. New `ingestor snap-roads` CLI command.
+  NEUTRAL = none. **512,387 of 513,795 collisions matched (99.7%)**,
+  290,180 road segments rated (183,340 AMBER / 97,522 DARK_AMBER /
+  9,318 RED), spot-checked the worst-rated roads and they're real,
+  named UK streets with plausible collision histories (Beverley Road
+  Hull, 91 collisions; Upper Tooting Road London, 51 collisions and 12
+  serious injuries).
 - New `/api/map/roads` route and a `ROAD_SAFETY` map mode: a DeckGL
   `PathLayer` colouring real road geometry by rating, road classes
   filtered by zoom (major roads only nationally, more local classes as
   you zoom in) the same way the H3 hexagon layer's resolution changes
-  with zoom.
-- Prototyped and visually verified end-to-end on Cumbria before scaling
-  up: screenshotted the live production map in `ROAD_SAFETY` mode over
-  Workington/Cockermouth, real red/dark-amber road segments visible
-  exactly where the underlying collision data says they should be, results
-  table showing real road names ("Distington Bypass", trunk, 3
-  collisions, 1 serious).
+  with zoom. Verified live in production against a non-Cumbria region
+  (Leeds): querying `/api/map/roads` for a real Leeds bounding box
+  returned genuine varied ratings (Tong Road and Burley Road both RED,
+  10 and 12 collisions), not just the Cumbria prototype's coverage.
+  **No manual redeploy was needed for this**: Vercel's GitHub
+  integration auto-deploys every push to `main`, the frontend code had
+  already been live since earlier in the session, only the underlying
+  database needed to finish filling in, which the already-deployed API
+  routes picked up automatically on the next request.
 
-**In progress right now, unattended on GitHub Actions, not dependent on
-this machine:** scaling from the Cumbria prototype to all of Great
-Britain. `.github/workflows/import-road-network.yml` dispatched once per
-UK sub-region (51 English counties + Scotland + Wales = 53 regions,
-Geofabrik's own natural split, chosen so no single job risks GitHub's
-6-hour limit the way one full-GB-in-one-job run plausibly could). First
-burst of 53 parallel dispatches: 35 succeeded, 14 failed or were
-cancelled (`OperationalError: consuming input failed: SSL connection has
-been closed`, or a cancelled queue slot), almost certainly the free-tier
-cluster genuinely overloaded by 53 simultaneous jobs each holding a
-connection, not a code bug, the 14 that failed/cancelled were
-disproportionately the largest/slowest regions (Scotland, Wales, Greater
-London, Greater Manchester, Hampshire, Devon, and similar), consistent
-with that theory. All 14 redispatched once the other 35 had already
-finished and released their connections, reducing concurrent load;
-that redispatch is what's currently running.
+**Two more real bugs found and fixed while scaling the snapping step to
+the full country** (the Cumbria prototype's 77,913-segment scope never
+exercised either path):
+
+1. A single unbounded snapping `UPDATE` hit `statement_timeout`
+   (120s) against the full 5.2 million-segment table.
+2. The first chunking fix still stalled after one batch: its
+   termination check was "did the last batch match fewer collisions
+   than requested", but some collisions genuinely never match (no road
+   within 30m) and stay `road_segment_id IS NULL` forever, so a batch
+   that correctly matched 1,982 of 2,000 candidates was wrongly read as
+   "nothing left to do" and the run stopped having processed under
+   2,200 of 513,801 collisions. Fixed with cursor-based pagination over
+   `collision_index` that tracks candidates *seen*, not matched, the
+   only thing that reliably reaches the true end of the table. Full
+   detail on both, including the EXPLAIN output that diagnosed a
+   multi-billion-row estimated sort in dense areas like central London,
+   is in `docs/road-safety-ratings.md`.
 
 ## Exact next steps, in order
 
-1. Check `gh run list --workflow=import-road-network.yml -R
-   ynot-tony1/roadsafe-uk --limit 60` for the 14 redispatched regions
-   (west-yorkshire, west-sussex, west-midlands, warwickshire, surrey,
-   suffolk, hampshire, greater-manchester, greater-london, essex,
-   devon, derbyshire, wales, scotland). If any failed again, check its
-   log for the actual error before blindly redispatching a third time,
-   `import-road-network` upserts on `osm_way_id` so redispatching a
-   region that already partially succeeded is always safe.
-2. Once every region shows `SUCCEEDED`, dispatch
-   `finalize-road-safety-ratings.yml` once (`gh workflow run
-   finalize-road-safety-ratings.yml`), no inputs needed. Verify
-   afterward: `SELECT safety_rating, count(*) FROM road_segments WHERE
-   collision_count > 0 GROUP BY 1` should show a realistic distribution
-   nationwide (Cumbria alone showed roughly 60% AMBER / 35% DARK_AMBER /
-   4% RED among rated segments), and `SELECT count(*) FROM collisions
-   WHERE road_segment_id IS NOT NULL` should be a large majority of
-   513,801 (some will legitimately stay unmatched: collisions with no
-   road within 30m, or a genuinely missing OSM road in that specific
-   spot).
-3. Redeploy to Vercel (`vercel deploy` then `vercel deploy --prod`
-   once confirmed on the preview) so the `ROAD_SAFETY` map mode reflects
-   the completed nationwide dataset instead of Cumbria-only coverage.
-   Spot-check a few other UK regions in `ROAD_SAFETY` mode the same way
-   Cumbria was verified, a screenshot showing real, varied road colours
-   somewhere far from Cumbria (e.g. central London, Glasgow) is the real
-   confirmation this worked, not just a clean workflow run.
-4. Walk the full spec section 23 acceptance checklist against the live
+1. Walk the full spec section 23 acceptance checklist against the live
    production system, this has still not been done, everything so far
    is route-level and feature-level smoke-checking, not a systematic
    pass against the original spec's acceptance criteria.
-5. Decide whether the 20-unmapped-local-authority-code gap (noted
-   above, from yesterday) is worth closing, and if so, source the
+2. Decide whether the 20-unmapped-local-authority-code gap (noted
+   above, from 2026-08-05) is worth closing, and if so, source the
    pre-2023 English district names properly rather than from memory.
+3. Purely optional polish, not a functional gap: `road_segments.name`
+   is `NULL` for some OSM ways (unnamed service roads, some rural
+   roads), the results table already falls back to "Unnamed road" for
+   these, no fix needed unless it looks wrong in practice.
+4. If a future change needs the local `vercel` CLI specifically
+   (inspecting deployments, managing env vars), run `vercel login`
+   first, its token expired partway through this session. Not needed
+   for ordinary `git push`-triggered deploys, those go through
+   Vercel's GitHub integration independently.
 
 ## How to resume
 
-Just say "continue". The 14 redispatched regions are running unattended
-on GitHub Actions, not dependent on this machine. Check them with `gh run
-list --workflow=import-road-network.yml -R ynot-tony1/roadsafe-uk --limit
-60` and pick up at "Exact next steps" step 1 above.
+Just say "continue". Nothing is running in the background and nothing
+was left mid-operation. Pick up at "Exact next steps" step 1 above.

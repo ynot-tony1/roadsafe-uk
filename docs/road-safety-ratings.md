@@ -155,3 +155,73 @@ still-unmatched collision to the now-complete road network and compute
 every segment's rating. Safe to re-run: snapping only ever touches
 collisions with `road_segment_id IS NULL`, and rating computation is a
 plain aggregate `UPDATE` with no cumulative state.
+
+All 53 regions were imported (an initial burst of 53 simultaneous jobs
+overloaded the free-tier cluster's connection limit, 14 of the
+largest/slowest regions failed or were cancelled; redispatching just
+those 14 once the other 39 had already finished and released their
+connections cleared it, not a code bug). Final count: **5,233,954 road
+segments**, spanning Great Britain's full extent (`ST_Extent` confirms
+lat 49.9-60.8, lng -8.6 to 1.8), real coverage checked directly in
+London, Glasgow, and Cardiff.
+
+## Two more real bugs, only found once the full country was loaded
+
+The Cumbria prototype's 77,913-segment scope was never enough to
+exercise either of these; both only showed up once `finalize-road-safety-ratings.yml`
+ran the snapping pass against the real, complete 5.2 million-segment
+table.
+
+**Bug 1: a single unbounded snapping `UPDATE` hit `statement_timeout`.**
+`connect()`'s 120-second `statement_timeout` (added earlier this
+session for an unrelated hung-connection problem, see
+`docs/troubleshooting.md`) killed the first production run outright:
+`QueryCanceled: query execution canceled due to statement timeout`.
+The benchmark that measured ~1,000 collisions/second was against
+Cumbria's 77,913 segments; against the real 5.2 million-segment table,
+one unbounded statement covering all ~500k remaining collisions never
+had a chance to finish in time.
+
+**Bug 2: the first chunking fix stopped after one batch.** The obvious
+fix, cap each `UPDATE` at `batch_size` rows via a `LIMIT`, ran into two
+separate problems, discovered one after the other:
+
+1. *Batching alone wasn't enough for dense areas.* A batch scoped to
+   central London timed out even at a batch size of 20. `EXPLAIN`
+   showed why: the query's `DISTINCT ON` semantics force CockroachDB to
+   fully materialise the spatial join, and sort the result, across
+   *every* matching collision in scope before the outer `LIMIT` can
+   apply at all, an estimated 22 billion row sort for that London bbox.
+   The identical query structure against Cumbria's far lower road and
+   collision density ran in seconds, which is exactly why this never
+   showed up in the prototype. Fixed by pre-selecting a small, bounded
+   set of candidate collisions in a CTE (later an explicit
+   `= ANY(...)` id list) *before* the spatial join runs, confirmed via
+   `EXPLAIN` that the `LIMIT` now applies first. Verified empirically:
+   2,000-row batches against both a London-scoped query and the real
+   unscoped production query completed in ~2.9 seconds, real execution
+   time, not an estimate.
+2. *The termination check was wrong.* With batching fixed, the first
+   real production run still stopped after processing under 2,200 of
+   513,801 collisions, having matched 1,982 of its one and only
+   2,000-row batch, 91% is a normal match rate (some collisions
+   genuinely have no road within 30m and never match), but the loop's
+   termination check was "did the last batch match fewer collisions
+   than requested", which is not the same question as "are there more
+   candidates left". A collision with no nearby road stays
+   `road_segment_id IS NULL` forever, so treating "fewer matches than
+   batch_size" as "nothing left to process" stops as soon as any batch
+   happens to contain a few unmatchable rows, almost immediately in
+   practice. Fixed with cursor-based pagination over `collision_index`:
+   track candidates *seen* each batch, not matched, and only stop once
+   a batch sees fewer candidates than requested, the actual end of the
+   `road_segment_id IS NULL` pool in scope, regardless of how many of
+   those candidates matched.
+
+Final result after both fixes: **512,387 of 513,795 collisions matched
+(99.7%)**, 290,180 road segments rated (183,340 AMBER / 97,522
+DARK_AMBER / 9,318 RED). Spot-checked the worst-rated roads against
+real UK geography rather than trusting the aggregate numbers alone:
+Beverley Road (Hull, 91 collisions), Upper Tooting Road (London, 51
+collisions, 12 serious injuries), Thornton Road (Bradford, 64
+collisions), all real, named, plausible.
