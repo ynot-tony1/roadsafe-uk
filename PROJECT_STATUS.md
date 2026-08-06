@@ -1,7 +1,12 @@
 # RoadSafe UK, build status
 
-Last updated: 2026-08-05. The full five-year STATS19 import (2021-2025) is
-complete and verified, and the app is live in production against it.
+Last updated: 2026-08-05 (evening). The full five-year STATS19 import
+(2021-2025) is complete and verified, the app is live in production
+against it, two real map bugs found after deployment are fixed and
+verified, and a new per-road safety rating feature is built and mid-way
+through a full Great Britain rollout, in progress unattended on GitHub
+Actions right now. See "Per-road safety ratings" below for the current
+state and exactly what's left.
 
 ## Where the code lives
 
@@ -314,17 +319,136 @@ Redeployed to preview (`vercel deploy`), spot-checked
 `/hotspots`, `/road-users`, and `/map` (all 200), then promoted with
 `vercel deploy --prod`, aliased to `https://roadsafe-uk.vercel.app`.
 
+## Two real map bugs found and fixed after deployment (2026-08-05, evening)
+
+The user reported the map itself wasn't usable after the redeploy above.
+Investigated with real interaction (Playwright against the live production
+site, not just reading code), found two independent, confirmed bugs:
+
+1. **`/api/map/h3` and `/api/map/clusters` 500'd on every request.**
+   `TypeError: Do not know how to serialize a BigInt`. CockroachDB's
+   `count(*)` comes back as a JS `BigInt` through Prisma's raw query path
+   regardless of the SQL's own `::int` cast, and `NextResponse.json`'s
+   `JSON.stringify` can't serialize `BigInt`. Fixed by explicitly
+   `Number()`-converting those fields in both routes.
+2. **The map never refetched data after the very first load, at all,
+   for any interaction.** DeckGL's own controller (enabled via the
+   `controller` prop) is what actually receives mouse/touch/keyboard
+   input, not the nested `<Map>`'s native handlers, so panning or
+   zooming with the mouse never fired the MapLibre `moveend` event the
+   data-loading code listened for. Confirmed via network-request
+   logging: zero new `/api/map/*` requests fired after zooming in
+   repeatedly, all the way to street level. This is why zooming in
+   showed nothing. Fixed by also listening to DeckGL's own
+   `onViewStateChange`, kept `onMoveEnd` too since it's still what fires
+   for the `NavigationControl` zoom buttons, which call the native map
+   directly and bypass DeckGL's controller.
+
+Separately, `buildClusterLayer` painted every dot a flat blue regardless
+of severity, contradicting its own "Collision severity" legend, fixed to
+reuse the same red/orange/yellow blend the H3 hexagon layer already used.
+
+All three fixed, verified with real Playwright interaction against
+production (zoom/pan triggering real new network requests, cluster dots
+showing varied colours matching the legend), redeployed to production.
+
+## Per-road safety ratings (new feature, in progress)
+
+The user's actual ask, once the above was fixed: rate individual roads by
+safety, not just aggregated area/hexagon/point views. Full design
+rationale, the two separate performance investigations, and the exact
+53-region dispatch list are in
+[`docs/road-safety-ratings.md`](docs/road-safety-ratings.md); this is
+the short version.
+
+**Built and deployed to production today:**
+
+- `road_segments` table: OSM road geometry (native CockroachDB
+  `GEOMETRY(LineString, 4326)` column with a GIST index, added by hand
+  in the migration since Prisma can't express spatial indexes
+  declaratively) plus a derived `safety_rating` enum
+  (`NEUTRAL`/`AMBER`/`DARK_AMBER`/`RED`). `collisions.road_segment_id` is
+  a new nullable FK, set by a separate snapping pass, never by the
+  STATS19 importer.
+- `services/ingestor/.../importers/road_network.py`: loads a Geofabrik
+  `.osm.pbf` extract's vehicle-carrying roads (excludes footway/path/
+  steps/bridleway/cycleway/pedestrian, STATS19 collisions essentially
+  never touch those). New `ingestor import-road-network <pbf-path>` CLI
+  command.
+- `services/ingestor/.../road_snapping.py`: snaps collisions to their
+  nearest road segment within 30m (exact geography-based cutoff, not
+  just the broad-phase index pre-filter) and computes each segment's
+  rating: RED = any fatal or 10+ collisions, DARK_AMBER = any serious
+  injury or 4+ collisions, AMBER = anything else with at least one,
+  NEUTRAL = none. New `ingestor snap-roads` CLI command.
+- New `/api/map/roads` route and a `ROAD_SAFETY` map mode: a DeckGL
+  `PathLayer` colouring real road geometry by rating, road classes
+  filtered by zoom (major roads only nationally, more local classes as
+  you zoom in) the same way the H3 hexagon layer's resolution changes
+  with zoom.
+- Prototyped and visually verified end-to-end on Cumbria before scaling
+  up: screenshotted the live production map in `ROAD_SAFETY` mode over
+  Workington/Cockermouth, real red/dark-amber road segments visible
+  exactly where the underlying collision data says they should be, results
+  table showing real road names ("Distington Bypass", trunk, 3
+  collisions, 1 serious).
+
+**In progress right now, unattended on GitHub Actions, not dependent on
+this machine:** scaling from the Cumbria prototype to all of Great
+Britain. `.github/workflows/import-road-network.yml` dispatched once per
+UK sub-region (51 English counties + Scotland + Wales = 53 regions,
+Geofabrik's own natural split, chosen so no single job risks GitHub's
+6-hour limit the way one full-GB-in-one-job run plausibly could). First
+burst of 53 parallel dispatches: 35 succeeded, 14 failed or were
+cancelled (`OperationalError: consuming input failed: SSL connection has
+been closed`, or a cancelled queue slot), almost certainly the free-tier
+cluster genuinely overloaded by 53 simultaneous jobs each holding a
+connection, not a code bug, the 14 that failed/cancelled were
+disproportionately the largest/slowest regions (Scotland, Wales, Greater
+London, Greater Manchester, Hampshire, Devon, and similar), consistent
+with that theory. All 14 redispatched once the other 35 had already
+finished and released their connections, reducing concurrent load;
+that redispatch is what's currently running.
+
 ## Exact next steps, in order
 
-1. Walk the full spec section 23 acceptance checklist against the live
-   production system, this has not been done yet, everything above is
-   route-level smoke-checking, not a systematic pass against the
-   original spec's acceptance criteria.
-2. Decide whether the 20-unmapped-local-authority-code gap (see above)
-   is worth closing, and if so, source the pre-2023 English district
-   names properly rather than from memory.
+1. Check `gh run list --workflow=import-road-network.yml -R
+   ynot-tony1/roadsafe-uk --limit 60` for the 14 redispatched regions
+   (west-yorkshire, west-sussex, west-midlands, warwickshire, surrey,
+   suffolk, hampshire, greater-manchester, greater-london, essex,
+   devon, derbyshire, wales, scotland). If any failed again, check its
+   log for the actual error before blindly redispatching a third time,
+   `import-road-network` upserts on `osm_way_id` so redispatching a
+   region that already partially succeeded is always safe.
+2. Once every region shows `SUCCEEDED`, dispatch
+   `finalize-road-safety-ratings.yml` once (`gh workflow run
+   finalize-road-safety-ratings.yml`), no inputs needed. Verify
+   afterward: `SELECT safety_rating, count(*) FROM road_segments WHERE
+   collision_count > 0 GROUP BY 1` should show a realistic distribution
+   nationwide (Cumbria alone showed roughly 60% AMBER / 35% DARK_AMBER /
+   4% RED among rated segments), and `SELECT count(*) FROM collisions
+   WHERE road_segment_id IS NOT NULL` should be a large majority of
+   513,801 (some will legitimately stay unmatched: collisions with no
+   road within 30m, or a genuinely missing OSM road in that specific
+   spot).
+3. Redeploy to Vercel (`vercel deploy` then `vercel deploy --prod`
+   once confirmed on the preview) so the `ROAD_SAFETY` map mode reflects
+   the completed nationwide dataset instead of Cumbria-only coverage.
+   Spot-check a few other UK regions in `ROAD_SAFETY` mode the same way
+   Cumbria was verified, a screenshot showing real, varied road colours
+   somewhere far from Cumbria (e.g. central London, Glasgow) is the real
+   confirmation this worked, not just a clean workflow run.
+4. Walk the full spec section 23 acceptance checklist against the live
+   production system, this has still not been done, everything so far
+   is route-level and feature-level smoke-checking, not a systematic
+   pass against the original spec's acceptance criteria.
+5. Decide whether the 20-unmapped-local-authority-code gap (noted
+   above, from yesterday) is worth closing, and if so, source the
+   pre-2023 English district names properly rather than from memory.
 
 ## How to resume
 
-Just say "continue". Nothing is running in the background and nothing
-was left mid-operation on this machine.
+Just say "continue". The 14 redispatched regions are running unattended
+on GitHub Actions, not dependent on this machine. Check them with `gh run
+list --workflow=import-road-network.yml -R ynot-tony1/roadsafe-uk --limit
+60` and pick up at "Exact next steps" step 1 above.
