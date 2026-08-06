@@ -26,6 +26,9 @@ from roadsafe_ingestor.importers.vehicles import import_vehicles
 from roadsafe_ingestor.ingestion_run import complete_run, start_run
 from roadsafe_ingestor.logging_config import configure_logging, get_logger, log_extra
 from roadsafe_ingestor.road_snapping import (
+    DEFAULT_BATCH_SIZE as SNAP_DEFAULT_BATCH_SIZE,
+)
+from roadsafe_ingestor.road_snapping import (
     DEFAULT_SNAP_DISTANCE_METERS,
     compute_road_safety_ratings,
     snap_collisions_to_roads,
@@ -118,6 +121,7 @@ def snap_roads_cmd(
     min_lng: Annotated[float | None, typer.Option()] = None,
     max_lng: Annotated[float | None, typer.Option()] = None,
     distance_meters: Annotated[float, typer.Option()] = DEFAULT_SNAP_DISTANCE_METERS,
+    batch_size: Annotated[int, typer.Option()] = SNAP_DEFAULT_BATCH_SIZE,
 ) -> None:
     """Snap unmatched collisions (optionally within a bbox) to their nearest
     road segment, then recompute every road segment's safety rating."""
@@ -131,6 +135,7 @@ def snap_roads_cmd(
             min_lng=min_lng,
             max_lng=max_lng,
             distance_meters=distance_meters,
+            batch_size=batch_size,
         )
         updated = compute_road_safety_ratings(conn)
     typer.echo(f"matched={matched} segments_rated={updated}")

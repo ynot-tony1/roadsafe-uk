@@ -21,6 +21,15 @@ logger = get_logger(__name__)
 
 DEFAULT_SNAP_DISTANCE_METERS = 30
 
+# A single unbounded UPDATE across the whole country hit connect()'s
+# statement_timeout (the road network grew from Cumbria's 77,913 segments
+# in the benchmark that measured ~1,000/s to 5.2 million once every UK
+# region was imported, so real per-collision candidate counts in dense
+# areas are far higher against the full table). Chunking keeps every
+# individual statement well inside statement_timeout regardless of how
+# many segments now exist.
+DEFAULT_BATCH_SIZE = 2000
+
 # Index-accelerated pre-filter in raw degree space (ST_DWithin against the
 # geometry column, not a geography cast, so the GIST index on road_segments
 # is actually used, confirmed via EXPLAIN). Degrees-per-metre shrinks in the
@@ -34,6 +43,69 @@ BROAD_PHASE_DEGREES = 0.0008
 
 
 @retry_on_serialization_conflict
+def _snap_one_batch(
+    conn: Connection,
+    *,
+    bbox_clause: str,
+    bbox_params: list[float],
+    distance_meters: float,
+    batch_size: int,
+) -> int:
+    # The `batch` CTE picks a small, bounded set of candidate collisions
+    # *before* the spatial join ever runs. Without it, CockroachDB has to
+    # fully materialise the join (and the DISTINCT ON's sort) across every
+    # matching collision in scope before the outer LIMIT can apply, since
+    # DISTINCT ON's semantics need to see every candidate row to pick the
+    # true nearest per group. In a dense area (central London) that alone
+    # was enough to exceed connect()'s statement_timeout even at a batch
+    # size of 20, EXPLAIN showed a multi-billion-row estimated sort; the
+    # exact same query structure against Cumbria (far lower road and
+    # collision density) had run in seconds, which is what made this only
+    # show up once the full country's road network was loaded, not during
+    # the original prototype. Pre-limiting the candidate set first keeps
+    # every batch's real cost bounded by batch_size, not by how dense the
+    # surrounding area happens to be.
+    sql = f"""
+    WITH batch AS (
+        SELECT collision_index, longitude, latitude
+        FROM collisions
+        WHERE road_segment_id IS NULL AND longitude IS NOT NULL AND latitude IS NOT NULL
+          {bbox_clause}
+        ORDER BY collision_index
+        LIMIT %s
+    )
+    UPDATE collisions c
+    SET road_segment_id = nearest.rs_id
+    FROM (
+        SELECT DISTINCT ON (b.collision_index)
+            b.collision_index,
+            rs.id AS rs_id
+        FROM batch b
+        JOIN road_segments rs
+            ON ST_DWithin(
+                rs.geometry,
+                ST_SetSRID(ST_MakePoint(b.longitude, b.latitude), 4326),
+                %s
+            )
+        WHERE ST_Distance(
+                rs.geometry::GEOGRAPHY,
+                ST_SetSRID(ST_MakePoint(b.longitude, b.latitude), 4326)::GEOGRAPHY
+              ) <= %s
+        ORDER BY b.collision_index,
+            ST_Distance(
+                rs.geometry::GEOGRAPHY,
+                ST_SetSRID(ST_MakePoint(b.longitude, b.latitude), 4326)::GEOGRAPHY
+            )
+    ) AS nearest
+    WHERE c.collision_index = nearest.collision_index
+    """
+    with conn.cursor() as cur:
+        cur.execute(sql, [*bbox_params, batch_size, BROAD_PHASE_DEGREES, distance_meters])
+        matched = cur.rowcount
+    conn.commit()
+    return matched
+
+
 def snap_collisions_to_roads(
     conn: Connection,
     *,
@@ -42,57 +114,54 @@ def snap_collisions_to_roads(
     min_lng: float | None = None,
     max_lng: float | None = None,
     distance_meters: float = DEFAULT_SNAP_DISTANCE_METERS,
+    batch_size: int = DEFAULT_BATCH_SIZE,
 ) -> int:
     """Sets road_segment_id on every collision within the given bbox (or
     every collision with coordinates, if no bbox given) that doesn't already
     have one and has a road segment within distance_meters. Safe to re-run:
     only ever touches rows where road_segment_id IS NULL, so re-running
     after importing more road network coverage picks up newly-matchable
-    collisions without re-processing already-matched ones."""
+    collisions without re-processing already-matched ones.
+
+    Processes batch_size collisions per statement rather than the whole
+    match set in one UPDATE: a single unbounded UPDATE across the whole of
+    Great Britain's ~513k collisions and 5.2 million road segments hit
+    connect()'s statement_timeout in production. Loops until a batch
+    matches nothing further, that's the real termination condition, not a
+    fixed number of iterations, since some collisions in the WHERE clause
+    legitimately never match (no road within distance_meters) and would
+    otherwise make the loop spin forever re-selecting the same unmatched
+    rows.
+    """
     bbox_clause = ""
-    params: list[float] = []
+    bbox_params: list[float] = []
     if min_lat is not None:
         assert (
             max_lat is not None and min_lng is not None and max_lng is not None
         ), "min_lat, max_lat, min_lng, max_lng must all be given together, or not at all"
         bbox_clause = "AND c2.longitude BETWEEN %s AND %s AND c2.latitude BETWEEN %s AND %s"
-        params = [min_lng, max_lng, min_lat, max_lat]
+        bbox_params = [min_lng, max_lng, min_lat, max_lat]
 
-    sql = f"""
-    UPDATE collisions c
-    SET road_segment_id = nearest.rs_id
-    FROM (
-        SELECT DISTINCT ON (c2.collision_index)
-            c2.collision_index,
-            rs.id AS rs_id
-        FROM collisions c2
-        JOIN road_segments rs
-            ON ST_DWithin(
-                rs.geometry,
-                ST_SetSRID(ST_MakePoint(c2.longitude, c2.latitude), 4326),
-                %s
-            )
-        WHERE c2.longitude IS NOT NULL AND c2.latitude IS NOT NULL
-          AND c2.road_segment_id IS NULL
-          AND ST_Distance(
-                rs.geometry::GEOGRAPHY,
-                ST_SetSRID(ST_MakePoint(c2.longitude, c2.latitude), 4326)::GEOGRAPHY
-              ) <= %s
-          {bbox_clause}
-        ORDER BY c2.collision_index,
-            ST_Distance(
-                rs.geometry::GEOGRAPHY,
-                ST_SetSRID(ST_MakePoint(c2.longitude, c2.latitude), 4326)::GEOGRAPHY
-            )
-    ) AS nearest
-    WHERE c.collision_index = nearest.collision_index
-    """
-    with conn.cursor() as cur:
-        cur.execute(sql, [BROAD_PHASE_DEGREES, distance_meters, *params])
-        matched = cur.rowcount
-    conn.commit()
-    log_extra(logger, 20, "collisions snapped to road segments", matched=matched)
-    return matched
+    total_matched = 0
+    while True:
+        matched = _snap_one_batch(
+            conn,
+            bbox_clause=bbox_clause,
+            bbox_params=bbox_params,
+            distance_meters=distance_meters,
+            batch_size=batch_size,
+        )
+        total_matched += matched
+        log_extra(
+            logger,
+            20,
+            "collisions snapped to road segments (batch)",
+            matched=matched,
+            total_matched=total_matched,
+        )
+        if matched < batch_size:
+            break
+    return total_matched
 
 
 # Mirrors the exact wording of the requested rating scheme: neutral if no
